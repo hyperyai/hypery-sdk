@@ -1,0 +1,90 @@
+# Publish to npm when a GitHub release is promoted from prerelease to full release.
+# Downloads the npm package tarball from the release (no rebuild).
+#
+# AUTH: npm OIDC trusted publishing (no long-lived NPM_TOKEN — npm revoked classic
+# tokens on 2026-12-09 and forces granular tokens to expire, so OIDC is the only
+# durable option). Requires a ONE-TIME setup on npmjs.com (the package must exist,
+# so the very first version is published manually); until that is done a publish
+# fails with E404/E422. For `@hypery/auth`, open npmjs.com > the package >
+# Settings > "Trusted Publisher" > GitHub Actions and set:
+#   Organization or user: hyperyai
+#   Repository:           hypery-sdk
+#   Workflow filename:    npm-release.yml
+#   Environment:          (leave blank)
+# Requires npm >= 11.5.1 (upgraded below) and the id-token: write permission.
+
+name: NPM release
+
+on:
+  release:
+    types: [published, edited]
+
+jobs:
+  publish:
+    name: Publish to npm
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to update release body via API
+      id-token: write   # required for npm OIDC trusted publishing
+    env:
+      # No NODE_AUTH_TOKEN — auth is via OIDC (see trusted-publishing note at top).
+      # Provenance is disabled because the package publishes from a pre-built tarball
+      # (built in the CI workflow, not this run), the fragile case for provenance.
+      # To enable it later, remove this line and confirm the tarball publishes still pass.
+      NPM_CONFIG_PROVENANCE: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Download npm package tarball from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSETS='${{ toJSON(github.event.release.assets) }}'
+          PKG_URL=$(echo "$ASSETS" | jq -r '.[] | select(.name == "hypery-auth-npm-package.tgz") | .url')
+          if [ -z "$PKG_URL" ] || [ "$PKG_URL" = "null" ]; then
+            echo "Release has no asset hypery-auth-npm-package.tgz"
+            exit 1
+          fi
+          curl -sL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$PKG_URL" -o hypery-auth-npm-package.tgz
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm for OIDC trusted publishing (needs >= 11.5.1)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: Publish @hypery/auth to npm
+        run: npm publish hypery-auth-npm-package.tgz --access public
+
+      - name: Update release description with npm URL
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          NPM_URL="https://www.npmjs.com/package/@hypery/auth/v/${VERSION}"
+          RELEASE_ID="${{ github.event.release.id }}"
+          REPO="${{ github.repository }}"
+          # Fetch current release body from API (more reliable than event for large bodies)
+          CURRENT_BODY=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" | jq -r '.body // ""')
+          NEW_BODY="${CURRENT_BODY}
+
+          ---
+          Published to npm: ${NPM_URL}"
+          curl -s -X PATCH \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" \
+            -d "$(printf '%s' "$NEW_BODY" | jq -Rs '{body: .}')"

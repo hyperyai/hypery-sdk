@@ -1,0 +1,2 @@
+# Workflow changes always get owner review — they control npm publishing.
+/.github/workflows/ @spacedevin
