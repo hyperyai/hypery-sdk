@@ -38,15 +38,17 @@ jobs:
 
       - name: Verify "use client" directives survive the build
         run: |
-          # Every source file that starts with a use-client directive (either
-          # quote style) must have a built counterpart that still starts with it.
+          # Every source file carrying a use-client directive (either quote
+          # style; comments may legally precede it) must have a built
+          # counterpart that still carries it. Guards against a build setup
+          # that strips directive prologues.
           FAIL=0
           while read -r srcfile; do
             out="dist/${srcfile#src/}"; out="${out%.tsx}"; out="${out%.ts}"; out="${out}.js"
-            if ! head -1 "$out" 2>/dev/null | grep -qE "^['\"]use client['\"]"; then
+            if ! grep -qE "^['\"]use client['\"];?\s*$" "$out" 2>/dev/null; then
               echo "Missing directive in $out (source: $srcfile)"; FAIL=1
             fi
-          done < <(grep -rlE "^['\"]use client['\"]" src --include='*.ts' --include='*.tsx' | grep -v __tests__)
+          done < <(grep -rlE "^['\"]use client['\"];?\s*$" src --include='*.ts' --include='*.tsx' | grep -v __tests__)
           [ "$FAIL" -eq 0 ] && echo "All client directives preserved." || exit 1
 
   secret-scan:
