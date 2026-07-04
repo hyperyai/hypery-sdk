@@ -40,7 +40,7 @@
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
     "clsx": "^2.1.0",
-    "lucide-react": "^0.541.0",
+    "lucide-react": "^1.23.0",
     "tailwind-merge": "^2.2.0"
   },
   "peerDependencies": {
