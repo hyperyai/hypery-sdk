@@ -10,7 +10,7 @@ We aim to acknowledge reports within 72 hours.
 
 ## Supported versions
 
-Only the latest published version of `@hypery/sdk` receives security fixes.
+Only the latest published version of `@hyperyai/sdk` receives security fixes.
 
 ## Scope notes
 

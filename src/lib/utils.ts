@@ -1,5 +1,5 @@
 /**
- * Utility functions for @hypery/sdk
+ * Utility functions for @hyperyai/sdk
  */
 
 import { type ClassValue, clsx } from "clsx"

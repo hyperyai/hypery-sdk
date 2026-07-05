@@ -1,4 +1,4 @@
-# @hypery/sdk
+# @hyperyai/sdk
 
 Drop-in authentication and error handling library for Hypery apps. Simple, secure, and built for React.
 
@@ -24,7 +24,7 @@ See **[docs/COMPONENTS.md](./docs/COMPONENTS.md)** for a visual reference of eve
 ## Installation
 
 ```bash
-npm install @hypery/sdk
+npm install @hyperyai/sdk
 ```
 
 The package ships compiled JavaScript with type declarations (plus the TypeScript
@@ -33,7 +33,7 @@ source under `src/` for reference), so it works out of the box — no
 
 ## Local development against this repo
 
-To develop `@hypery/sdk` alongside a consuming app, use
+To develop `@hyperyai/sdk` alongside a consuming app, use
 [yalc](https://github.com/wclr/yalc) (npm link duplicates React and breaks hooks):
 
 ```bash
@@ -41,7 +41,7 @@ To develop `@hypery/sdk` alongside a consuming app, use
 npm i -g yalc
 yalc publish            # builds via prepack and stores the real pack output
 # in your app
-yalc add @hypery/sdk && npm install
+yalc add @hyperyai/sdk && npm install
 
 # iterate: rebuild + push updates into consumers
 yalc push               # in hypery-sdk, after changes
@@ -55,7 +55,7 @@ yalc remove --all && npm install
 ### 1. Wrap your app with `HyperyProvider`
 
 ```tsx
-import { HyperyProvider } from '@hypery/sdk';
+import { HyperyProvider } from '@hyperyai/sdk';
 
 function App() {
   return (
@@ -77,7 +77,7 @@ function App() {
 ### 2. Use authentication components
 
 ```tsx
-import { SignedIn, SignedOut, SignIn, UserButton } from '@hypery/sdk';
+import { SignedIn, SignedOut, SignIn, UserButton } from '@hyperyai/sdk';
 
 function YourApp() {
   return (
@@ -104,7 +104,7 @@ function YourApp() {
 ### 3. Access user data with hooks
 
 ```tsx
-import { useUser, useHyperyAuth } from '@hypery/sdk';
+import { useUser, useHyperyAuth } from '@hyperyai/sdk';
 
 function Dashboard() {
   const { user, isLoading } = useUser();
@@ -303,7 +303,7 @@ const auth = useHyperyAuth();
 ### Manual token management
 
 ```tsx
-import { useHyperyAuth } from '@hypery/sdk';
+import { useHyperyAuth } from '@hyperyai/sdk';
 
 function MyComponent() {
   const { getAccessToken } = useHyperyAuth();
@@ -327,7 +327,7 @@ function MyComponent() {
 Build your own UI using the hooks:
 
 ```tsx
-import { useHyperyAuth } from '@hypery/sdk';
+import { useHyperyAuth } from '@hyperyai/sdk';
 
 function CustomLoginButton() {
   const { login, isLoading } = useHyperyAuth();

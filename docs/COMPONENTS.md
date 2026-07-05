@@ -1,4 +1,4 @@
-# @hypery/sdk — React Component Gallery
+# @hyperyai/sdk — React Component Gallery
 
 Drop-in **authentication components** for any React/Next.js app that signs users in
 through the Hypery gateway. Every screenshot below is a real render of the component
@@ -14,7 +14,7 @@ Wrap your app once in `HyperyProvider`. All components and hooks read from it.
 
 ```tsx
 // app/layout.tsx (Next.js App Router)
-import { HyperyProvider } from '@hypery/sdk';
+import { HyperyProvider } from '@hyperyai/sdk';
 
 export default function RootLayout({ children }) {
   return (
@@ -53,7 +53,7 @@ An embedded email/password + social login card. Use it when you want sign-in to 
 ![SignInForm](./screenshots/signinform.png)
 
 ```tsx
-import { SignInForm } from '@hypery/sdk';
+import { SignInForm } from '@hyperyai/sdk';
 
 <SignInForm
   showSocial            // Continue with Google / GitHub
@@ -83,7 +83,7 @@ Supports custom branding (logo, app name, primary color).
 ![AuthModal (open)](./screenshots/authmodal-open.png)
 
 ```tsx
-import { AuthModal } from '@hypery/sdk';
+import { AuthModal } from '@hyperyai/sdk';
 
 const [open, setOpen] = useState(false);
 
@@ -111,7 +111,7 @@ visual variants: `primary`, `secondary`, `outline`.
 | ![SignIn](./screenshots/signin.png) | ![SignUp](./screenshots/signup.png) |
 
 ```tsx
-import { SignIn, SignUp } from '@hypery/sdk';
+import { SignIn, SignUp } from '@hyperyai/sdk';
 
 <SignIn buttonText="Try Sign In" variant="primary" />
 <SignUp buttonText="Try Sign Up" variant="secondary" />
@@ -130,7 +130,7 @@ they show a placeholder (as captured below).
 | ![UserButton](./screenshots/userbutton.png) | ![UserProfile](./screenshots/userprofile.png) |
 
 ```tsx
-import { UserButton, UserProfile } from '@hypery/sdk';
+import { UserButton, UserProfile } from '@hyperyai/sdk';
 
 <UserButton showUserInfo size="md" />   // size: 'sm' | 'md' | 'lg'
 <UserProfile />
@@ -143,7 +143,7 @@ import { UserButton, UserProfile } from '@hypery/sdk';
 Render-gate components (no UI of their own — they show/hide children based on auth state).
 
 ```tsx
-import { SignedIn, SignedOut, Protect, RedirectToSignIn } from '@hypery/sdk';
+import { SignedIn, SignedOut, Protect, RedirectToSignIn } from '@hyperyai/sdk';
 
 <SignedIn><Dashboard /></SignedIn>
 <SignedOut><SignIn /></SignedOut>
@@ -162,7 +162,7 @@ import { SignedIn, SignedOut, Protect, RedirectToSignIn } from '@hypery/sdk';
 ## Hooks
 
 ```tsx
-import { useUser, useAuth, useError, useWallet, useMemberships } from '@hypery/sdk';
+import { useUser, useAuth, useError, useWallet, useMemberships } from '@hyperyai/sdk';
 
 const { user, isLoading } = useUser();
 const { isAuthenticated, login, logout, getAccessToken } = useAuth();
@@ -191,7 +191,7 @@ These render on a consumer site when a request hits a billing limit. They are
 - **`useWallet()`** — `wallet.mode`, balance, `addFunds(usd)`, `addPaymentMethod()`.
 
 ```tsx
-import { RestrictionModal, useError, useAuth } from '@hypery/sdk';
+import { RestrictionModal, useError, useAuth } from '@hyperyai/sdk';
 
 const { error, clearError } = useError();
 const { getAccessToken } = useAuth();

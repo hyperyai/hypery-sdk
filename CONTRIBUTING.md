@@ -1,4 +1,4 @@
-# Contributing to @hypery/sdk
+# Contributing to @hyperyai/sdk
 
 ## Development
 

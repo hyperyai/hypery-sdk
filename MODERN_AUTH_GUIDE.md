@@ -9,7 +9,7 @@
 
 ## Overview
 
-The `@hypery/sdk` package now includes **modern, beautiful authentication components** that you can drop into any React app. Choose between modal-based or embedded forms based on your needs.
+The `@hyperyai/sdk` package now includes **modern, beautiful authentication components** that you can drop into any React app. Choose between modal-based or embedded forms based on your needs.
 
 ### New Components
 
@@ -24,13 +24,13 @@ The `@hypery/sdk` package now includes **modern, beautiful authentication compon
 ### Installation
 
 ```bash
-npm install @hypery/sdk
+npm install @hyperyai/sdk
 ```
 
 ### Basic Setup
 
 ```tsx
-import { HyperyProvider } from '@hypery/sdk';
+import { HyperyProvider } from '@hyperyai/sdk';
 
 function App() {
   return (
@@ -56,7 +56,7 @@ function App() {
 Drop a button **anywhere** in your app that triggers a beautiful auth modal:
 
 ```tsx
-import { AuthButton } from '@hypery/sdk';
+import { AuthButton } from '@hyperyai/sdk';
 
 export function Navbar() {
   return (
@@ -70,7 +70,7 @@ export function Navbar() {
 ### Full Example with Customization
 
 ```tsx
-import { AuthButton } from '@hypery/sdk';
+import { AuthButton } from '@hyperyai/sdk';
 import { useRouter } from 'next/navigation';
 
 export function Hero() {
@@ -139,7 +139,7 @@ export function Hero() {
 For more control, use the modal directly:
 
 ```tsx
-import { AuthModal } from '@hypery/sdk';
+import { AuthModal } from '@hyperyai/sdk';
 import { useState } from 'react';
 
 export function MyComponent() {
@@ -167,7 +167,7 @@ export function MyComponent() {
 ### Advanced Example with Branding
 
 ```tsx
-import { AuthModal } from '@hypery/sdk';
+import { AuthModal } from '@hyperyai/sdk';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -232,7 +232,7 @@ Use this for full-page auth experiences:
 
 ```tsx
 // app/login/page.tsx
-import { ModernAuthForm } from '@hypery/sdk';
+import { ModernAuthForm } from '@hyperyai/sdk';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -335,7 +335,7 @@ const tealBranding = {
 ### 1. Add Auth Button to Navbar
 
 ```tsx
-import { AuthButton, SignedIn, SignedOut, UserButton } from '@hypery/sdk';
+import { AuthButton, SignedIn, SignedOut, UserButton } from '@hyperyai/sdk';
 
 export function Navbar() {
   return (
@@ -361,7 +361,7 @@ export function Navbar() {
 ### 2. Landing Page Hero with Auth
 
 ```tsx
-import { AuthButton } from '@hypery/sdk';
+import { AuthButton } from '@hyperyai/sdk';
 
 export function Hero() {
   return (
@@ -398,7 +398,7 @@ export function Hero() {
 ### 3. Protected Content with Auth Gate
 
 ```tsx
-import { Protect, AuthButton } from '@hypery/sdk';
+import { Protect, AuthButton } from '@hyperyai/sdk';
 
 export function PremiumFeature() {
   return (
@@ -423,7 +423,7 @@ export function PremiumFeature() {
 ### 4. Modal Triggered by Custom Action
 
 ```tsx
-import { AuthModal } from '@hypery/sdk';
+import { AuthModal } from '@hyperyai/sdk';
 import { useState } from 'react';
 
 export function PricingCard() {
@@ -458,7 +458,7 @@ export function PricingCard() {
 
 ```tsx
 // app/login/page.tsx
-import { ModernAuthForm } from '@hypery/sdk';
+import { ModernAuthForm } from '@hyperyai/sdk';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -566,7 +566,7 @@ export default function LoginPage() {
 ### Before (Old Way)
 
 ```tsx
-import { SignInForm } from '@hypery/sdk';
+import { SignInForm } from '@hyperyai/sdk';
 
 <SignInForm 
   showCard
@@ -579,7 +579,7 @@ import { SignInForm } from '@hypery/sdk';
 
 **Option A: Embedded Form**
 ```tsx
-import { ModernAuthForm } from '@hypery/sdk';
+import { ModernAuthForm } from '@hyperyai/sdk';
 
 <ModernAuthForm
   showCard
@@ -590,7 +590,7 @@ import { ModernAuthForm } from '@hypery/sdk';
 
 **Option B: Modal Button (Recommended)**
 ```tsx
-import { AuthButton } from '@hypery/sdk';
+import { AuthButton } from '@hyperyai/sdk';
 
 <AuthButton 
   onSuccess={handleSuccess}
@@ -663,7 +663,7 @@ import { AUTH_BRANDING } from '@/config/auth-branding';
 
 ```tsx
 import { useRouter } from 'next/navigation';
-import { AuthButton } from '@hypery/sdk';
+import { AuthButton } from '@hyperyai/sdk';
 
 export function MyComponent() {
   const router = useRouter();
@@ -716,7 +716,7 @@ The components use Tailwind classes internally. Make sure Tailwind is configured
 // tailwind.config.js
 module.exports = {
   content: [
-    './node_modules/@hypery/sdk/**/*.{js,ts,jsx,tsx}',
+    './node_modules/@hyperyai/sdk/**/*.{js,ts,jsx,tsx}',
     // ... your app paths
   ],
 };
@@ -747,7 +747,7 @@ import {
   type AuthButtonProps,
   type AuthModalProps,
   type ModernAuthFormProps,
-} from '@hypery/sdk';
+} from '@hyperyai/sdk';
 
 // Type-safe props
 const buttonProps: AuthButtonProps = {
@@ -829,7 +829,7 @@ export function PricingPage() {
 ### Example 3: Paywalled Content
 
 ```tsx
-import { SignedIn, SignedOut, AuthButton } from '@hypery/sdk';
+import { SignedIn, SignedOut, AuthButton } from '@hyperyai/sdk';
 
 export function Article() {
   return (
@@ -944,7 +944,7 @@ const variant = useABTest('auth_button_variant', {
 import { lazy, Suspense } from 'react';
 
 const AuthButton = lazy(() => 
-  import('@hypery/sdk').then(mod => ({ default: mod.AuthButton }))
+  import('@hyperyai/sdk').then(mod => ({ default: mod.AuthButton }))
 );
 
 <Suspense fallback={<button>Loading...</button>}>
