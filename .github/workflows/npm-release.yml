@@ -1,12 +1,17 @@
 # Publish to npm when a GitHub release is promoted from prerelease to full release.
-# Downloads the npm package tarball from the release (no rebuild).
+# Downloads the pre-built npm package tarball from the release (built in ci.yml) and
+# publishes it — no rebuild.
+#
+# Idempotent (mirrors tishlang's npm-release.yml): the publish job skips if this exact
+# version is already on npm, so re-runs stay green — including the `edited` event that
+# the separate update-release job triggers when it appends the npm URL to the body.
+# Without this, publishing then editing the body re-fires the workflow and the second
+# run dies with "cannot publish over the previously published version".
 #
 # AUTH: npm OIDC trusted publishing (no long-lived NPM_TOKEN — npm revoked classic
 # tokens on 2026-12-09 and forces granular tokens to expire, so OIDC is the only
-# durable option). Requires a ONE-TIME setup on npmjs.com (the package must exist,
-# so the very first version is published manually); until that is done a publish
-# fails with E404/E422. For `@hyperyai/sdk`, open npmjs.com > the package >
-# Settings > "Trusted Publisher" > GitHub Actions and set:
+# durable option). ONE-TIME setup on npmjs.com > @hyperyai/sdk > Settings >
+# "Trusted Publisher" > GitHub Actions:
 #   Organization or user: hyperyai
 #   Repository:           hypery-sdk
 #   Workflow filename:    npm-release.yml
@@ -22,36 +27,18 @@ on:
 jobs:
   publish:
     name: Publish to npm
+    # Only run for a full release (not a prerelease).
     if: github.event.release.prerelease == false
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # required to update release body via API
-      id-token: write   # required for npm OIDC trusted publishing
+      contents: read   # the release body is updated in the separate update-release job
+      id-token: write  # required for npm OIDC trusted publishing
     env:
       # No NODE_AUTH_TOKEN — auth is via OIDC (see trusted-publishing note at top).
       # Provenance is disabled because the package publishes from a pre-built tarball
-      # (built in the CI workflow, not this run), the fragile case for provenance.
-      # To enable it later, remove this line and confirm the tarball publishes still pass.
+      # (built in ci.yml, not this run), the fragile case for provenance.
       NPM_CONFIG_PROVENANCE: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: refs/tags/${{ github.event.release.tag_name }}
-          fetch-depth: 0
-
-      - name: Download npm package tarball from release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ASSETS='${{ toJSON(github.event.release.assets) }}'
-          PKG_URL=$(echo "$ASSETS" | jq -r '.[] | select(.name == "hyperyai-sdk-npm-package.tgz") | .url')
-          if [ -z "$PKG_URL" ] || [ "$PKG_URL" = "null" ]; then
-            echo "Release has no asset hyperyai-sdk-npm-package.tgz"
-            exit 1
-          fi
-          curl -sL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$PKG_URL" -o hyperyai-sdk-npm-package.tgz
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -63,10 +50,45 @@ jobs:
           npm install -g npm@latest
           npm --version
 
+      - name: Determine version and whether it is already published
+        id: check
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "@hyperyai/sdk@${VERSION}" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::@hyperyai/sdk@${VERSION} is already published — skipping."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download npm package tarball from release
+        if: steps.check.outputs.already == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSET_URL=$(echo '${{ toJSON(github.event.release.assets) }}' | jq -r '.[] | select(.name == "hyperyai-sdk-npm-package.tgz") | .url')
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Release has no asset hyperyai-sdk-npm-package.tgz"
+            exit 1
+          fi
+          curl -sL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$ASSET_URL" -o hyperyai-sdk-npm-package.tgz
+
       - name: Publish @hyperyai/sdk to npm
+        if: steps.check.outputs.already == 'false'
         run: npm publish hyperyai-sdk-npm-package.tgz --access public
 
-      - name: Update release description with npm URL
+  update-release:
+    name: Update release description
+    needs: publish
+    # Run after publish (success OR skip), but never for a prerelease.
+    if: ${{ always() && github.event.release.prerelease == false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to update the release body via API
+    steps:
+      - name: Update release description with npm URL (idempotent)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -75,9 +97,14 @@ jobs:
           NPM_URL="https://www.npmjs.com/package/@hyperyai/sdk/v/${VERSION}"
           RELEASE_ID="${{ github.event.release.id }}"
           REPO="${{ github.repository }}"
-          # Fetch current release body from API (more reliable than event for large bodies)
           CURRENT_BODY=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" | jq -r '.body // ""')
+          # Idempotent: the PATCH below fires another `edited` event which re-runs this
+          # workflow — don't append the npm-URL line a second time.
+          if printf '%s' "$CURRENT_BODY" | grep -q "Published to npm:"; then
+            echo "Release body already lists the npm URL — nothing to do."
+            exit 0
+          fi
           NEW_BODY="${CURRENT_BODY}
 
           ---
