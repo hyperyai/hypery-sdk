@@ -3,7 +3,7 @@
 ## 🚀 3-Second Integration
 
 ```tsx
-import { AuthButton } from '@hypery/auth';
+import { AuthButton } from '@hypery/sdk';
 
 <AuthButton>Sign In</AuthButton>
 ```

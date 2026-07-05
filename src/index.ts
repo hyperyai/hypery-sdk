@@ -1,10 +1,10 @@
 /**
- * @hypery/auth
+ * @hypery/sdk
  * Drop-in authentication and error handling library for Hypery apps
  * 
  * @example
  * ```tsx
- * import { HyperyProvider, useUser, SignedIn, SignedOut } from '@hypery/auth';
+ * import { HyperyProvider, useUser, SignedIn, SignedOut } from '@hypery/sdk';
  * 
  * <HyperyProvider config={{ ... }}>
  *   <SignedIn>

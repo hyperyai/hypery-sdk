@@ -1,5 +1,5 @@
 /**
- * Utility functions for @hypery/auth
+ * Utility functions for @hypery/sdk
  */
 
 import { type ClassValue, clsx } from "clsx"

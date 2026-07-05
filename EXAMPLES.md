@@ -1,4 +1,4 @@
-# @hypery/auth Examples
+# @hypery/sdk Examples
 
 ## Basic Setup
 
@@ -6,7 +6,7 @@
 
 ```tsx
 // app/layout.tsx
-import { HyperyProvider } from '@hypery/auth';
+import { HyperyProvider } from '@hypery/sdk';
 
 export default function RootLayout({ children }) {
   return (
@@ -32,7 +32,7 @@ export default function RootLayout({ children }) {
 
 ```tsx
 // pages/_app.tsx
-import { HyperyProvider } from '@hypery/auth';
+import { HyperyProvider } from '@hypery/sdk';
 import type { AppProps } from 'next/app';
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -57,7 +57,7 @@ export default function App({ Component, pageProps }: AppProps) {
 
 ```tsx
 // app/dashboard/page.tsx
-import { Protect, useUser } from '@hypery/auth';
+import { Protect, useUser } from '@hypery/sdk';
 
 export default function DashboardPage() {
   return (
@@ -81,7 +81,7 @@ function Dashboard() {
 ### Conditional Rendering
 
 ```tsx
-import { SignedIn, SignedOut, SignIn, UserButton } from '@hypery/auth';
+import { SignedIn, SignedOut, SignIn, UserButton } from '@hypery/sdk';
 
 function Header() {
   return (
@@ -105,7 +105,7 @@ function Header() {
 ### Manual Auth Check
 
 ```tsx
-import { useHyperyAuth } from '@hypery/auth';
+import { useHyperyAuth } from '@hypery/sdk';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -136,7 +136,7 @@ function ProtectedPage() {
 ### Authenticated Fetch
 
 ```tsx
-import { useHyperyAuth } from '@hypery/auth';
+import { useHyperyAuth } from '@hypery/sdk';
 
 function useAuthenticatedFetch() {
   const { getAccessToken } = useHyperyAuth();
@@ -177,7 +177,7 @@ function MyComponent() {
 ### With Hypery v1 API
 
 ```tsx
-import { useHyperyAuth } from '@hypery/auth';
+import { useHyperyAuth } from '@hypery/sdk';
 
 function ChatComponent() {
   const { getAccessToken } = useHyperyAuth();
@@ -209,7 +209,7 @@ function ChatComponent() {
 ### Custom Login Page
 
 ```tsx
-import { useHyperyAuth } from '@hypery/auth';
+import { useHyperyAuth } from '@hypery/sdk';
 import { useState } from 'react';
 
 function CustomLoginPage() {
@@ -269,7 +269,7 @@ function CustomLoginPage() {
 ### Custom User Menu
 
 ```tsx
-import { useUser, useHyperyAuth } from '@hypery/auth';
+import { useUser, useHyperyAuth } from '@hypery/sdk';
 import { useState, useRef, useEffect } from 'react';
 
 function CustomUserMenu() {
@@ -397,7 +397,7 @@ export const config = {
 'use client';
 
 import { useEffect } from 'react';
-import { useHyperyAuth } from '@hypery/auth';
+import { useHyperyAuth } from '@hypery/sdk';
 import { useRouter } from 'next/navigation';
 
 export default function CallbackPage() {

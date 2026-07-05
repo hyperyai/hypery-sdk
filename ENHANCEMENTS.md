@@ -1,4 +1,4 @@
-# @hypery/auth Enhancements
+# @hypery/sdk Enhancements
 
 Based on [Clerk's React Authentication](https://clerk.com/react-authentication) best practices.
 
@@ -164,7 +164,7 @@ If you're migrating from Clerk, here's a quick guide:
 
 ### Component Mapping
 
-| Clerk | @hypery/auth | Status |
+| Clerk | @hypery/sdk | Status |
 |-------|----------------|--------|
 | `<ClerkProvider>` | `<HyperyProvider>` | ✅ Available |
 | `<SignIn>` | `<SignIn>` | ✅ Available |
@@ -188,7 +188,7 @@ If you're migrating from Clerk, here's a quick guide:
    // Clerk
    <ClerkProvider publishableKey="pk_...">
    
-   // @hypery/auth
+   // @hypery/sdk
    <HyperyProvider config={{
      clientId: "your-client-id",
      redirectUri: "http://localhost:3000/callback",
@@ -198,14 +198,14 @@ If you're migrating from Clerk, here's a quick guide:
 
 2. **Authentication Flow**
    - Clerk: Managed auth with hosted pages
-   - @hypery/auth: OAuth 2.0 + PKCE flow
+   - @hypery/sdk: OAuth 2.0 + PKCE flow
 
 3. **User Object**
    ```tsx
    // Clerk
    user.firstName, user.lastName, user.imageUrl
    
-   // @hypery/auth
+   // @hypery/sdk
    user.name, user.email, user.image
    ```
 

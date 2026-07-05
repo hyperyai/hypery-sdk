@@ -144,10 +144,10 @@ jobs:
         env:
           VERSION: ${{ steps.next_version.outputs.version }}
 
-      - name: Create npm package tarball (@hypery/auth)
+      - name: Create npm package tarball (@hypery/sdk)
         run: |
           npm pack
-          mv hypery-auth-*.tgz hypery-auth-npm-package.tgz
+          mv hypery-sdk-*.tgz hypery-sdk-npm-package.tgz
 
       - name: Create or update release branch and push
         env:
@@ -230,5 +230,5 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -H "Content-Type: application/octet-stream" \
-            --data-binary @hypery-auth-npm-package.tgz \
-            "${UPLOAD_URL}?name=hypery-auth-npm-package.tgz&label=npm%20package%20(@hypery/auth)"
+            --data-binary @hypery-sdk-npm-package.tgz \
+            "${UPLOAD_URL}?name=hypery-sdk-npm-package.tgz&label=npm%20package%20(@hypery/sdk)"

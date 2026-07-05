@@ -33,7 +33,7 @@ import { openPopup, resolveInteractionMode } from './popup';
 import { TokenStorage } from './storage';
 
 /** window.open target name; also read back in the callback to detect popup context. */
-const AUTH_POPUP_NAME = 'hypery-auth-popup';
+const AUTH_POPUP_NAME = 'hypery-sdk-popup';
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
