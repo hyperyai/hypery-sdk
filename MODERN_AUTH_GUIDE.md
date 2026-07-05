@@ -38,7 +38,7 @@ function App() {
       config={{
         clientId: 'your-app-id',
         redirectUri: 'https://yourapp.com/auth/callback',
-        gatewayUrl: 'https://hypery.com',
+        gatewayUrl: 'https://api.hypery.ai',
       }}
     >
       <YourApp />
@@ -1053,10 +1053,10 @@ module.exports = {
 
 ## Support
 
-**Documentation:** [https://docs.hypery.com/auth](https://docs.hypery.com/auth)  
+**Documentation:** [https://docs.hypery.ai/auth](https://docs.hypery.ai/auth)  
 **Examples:** [https://github.com/hypery/examples](https://github.com/hypery/examples)  
 **Discord:** [https://discord.gg/hypery](https://discord.gg/hypery)  
-**Email:** support@hypery.com
+**Email:** support@hypery.ai
 
 ---
 

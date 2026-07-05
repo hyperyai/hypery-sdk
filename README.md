@@ -63,7 +63,7 @@ function App() {
       config={{
         clientId: 'your-client-id',
         redirectUri: 'http://localhost:3000/callback',
-        gatewayUrl: 'https://api.aihypery.ai',
+        gatewayUrl: 'https://api.hypery.ai',
         // Optional: defaults to ['read', 'write', 'ai:chat', 'ai:completions', 'ai:models', 'billing:read']
         scopes: ['read', 'write', 'ai:chat', 'ai:completions', 'ai:models', 'billing:read'],
       }}
@@ -351,7 +351,7 @@ Create a `.env.local` file:
 ```env
 NEXT_PUBLIC_OAUTH_CLIENT_ID=your_client_id
 NEXT_PUBLIC_REDIRECT_URI=http://localhost:3000/callback
-NEXT_PUBLIC_AUTH_URL=https://api.aihypery.ai
+NEXT_PUBLIC_AUTH_URL=https://api.hypery.ai
 ```
 
 ## Error handling: payment & auth modals

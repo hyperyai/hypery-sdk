@@ -51,7 +51,7 @@ export interface HyperyProviderProps {
  * <HyperyProvider config={{
  *   clientId: 'your-client-id',
  *   redirectUri: 'http://localhost:3000/callback',
- *   gatewayUrl: 'https://api.aihypery.ai',
+ *   gatewayUrl: 'https://api.hypery.ai',
  *   scopes: ['read', 'write', 'ai:chat']
  * }}>
  *   <App />

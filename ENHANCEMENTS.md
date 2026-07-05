@@ -192,7 +192,7 @@ If you're migrating from Clerk, here's a quick guide:
    <HyperyProvider config={{
      clientId: "your-client-id",
      redirectUri: "http://localhost:3000/callback",
-     gatewayUrl: "https://api.aihypery.ai"
+     gatewayUrl: "https://api.hypery.ai"
    }}>
    ```
 
