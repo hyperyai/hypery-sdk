@@ -1,12 +1,15 @@
 # Publish to npm when a GitHub release is promoted from prerelease to full release.
-# Downloads the pre-built npm package tarball from the release (built in ci.yml) and
-# publishes it — no rebuild.
 #
-# Idempotent (mirrors tishlang's npm-release.yml): the publish job skips if this exact
-# version is already on npm, so re-runs stay green — including the `edited` event that
-# the separate update-release job triggers when it appends the npm URL to the body.
-# Without this, publishing then editing the body re-fires the workflow and the second
-# run dies with "cannot publish over the previously published version".
+# @hyperyai/sdk is a pure-source package, so this mirrors tishlang's `type: source`
+# packages (@tishlang/pg, vite-plugin-tish): check out the release tag, build, and
+# publish FROM SOURCE — npm-release makes the artifact itself, no pre-built tarball
+# asset. (npm pack in ci.yml still attaches a tarball as a convenience download.)
+#
+# Idempotent (mirrors tishlang): skip the publish when this exact version is already
+# on npm, so re-runs stay green — including the `edited` event fired by the separate
+# update-release job when it appends the npm URL. Without this, publishing then
+# editing the body re-fires the workflow and the second run dies with "cannot
+# publish over the previously published version".
 #
 # AUTH: npm OIDC trusted publishing (no long-lived NPM_TOKEN — npm revoked classic
 # tokens on 2026-12-09 and forces granular tokens to expire, so OIDC is the only
@@ -35,15 +38,22 @@ jobs:
       id-token: write  # required for npm OIDC trusted publishing
     env:
       # No NODE_AUTH_TOKEN — auth is via OIDC (see trusted-publishing note at top).
-      # Provenance is disabled because the package publishes from a pre-built tarball
-      # (built in ci.yml, not this run), the fragile case for provenance.
       NPM_CONFIG_PROVENANCE: "false"
     steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Upgrade npm for OIDC trusted publishing (needs >= 11.5.1)
         run: |
@@ -63,21 +73,23 @@ jobs:
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download npm package tarball from release
+      - name: Install dependencies
         if: steps.check.outputs.already == 'false'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ASSET_URL=$(echo '${{ toJSON(github.event.release.assets) }}' | jq -r '.[] | select(.name == "hyperyai-sdk-npm-package.tgz") | .url')
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Release has no asset hyperyai-sdk-npm-package.tgz"
-            exit 1
-          fi
-          curl -sL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$ASSET_URL" -o hyperyai-sdk-npm-package.tgz
+        run: npm ci
 
-      - name: Publish @hyperyai/sdk to npm
+      - name: Build and test
         if: steps.check.outputs.already == 'false'
-        run: npm publish hyperyai-sdk-npm-package.tgz --access public
+        run: |
+          npm test
+          npm run build
+
+      - name: Set the package version from the release tag
+        if: steps.check.outputs.already == 'false'
+        run: npm version "${{ steps.check.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish @hyperyai/sdk to npm (from source)
+        if: steps.check.outputs.already == 'false'
+        run: npm publish --access public
 
   update-release:
     name: Update release description
