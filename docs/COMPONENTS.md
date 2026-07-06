@@ -24,7 +24,7 @@ export default function RootLayout({ children }) {
           config={{
             clientId: process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID!,
             redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI!,   // e.g. https://yourapp.com/callback
-            gatewayUrl: process.env.NEXT_PUBLIC_AUTH_URL!,        // the Hypery gateway, e.g. https://api.hypery.ai
+            gatewayUrl: process.env.NEXT_PUBLIC_AUTH_URL!,        // the Hypery gateway, e.g. https://hypery.ai
             scopes: ['read', 'write', 'ai:chat', 'billing:read'],
             storage: 'localStorage',
           }}

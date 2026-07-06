@@ -185,7 +185,7 @@ function ChatComponent() {
   const sendMessage = async (message: string) => {
     const token = await getAccessToken();
 
-    const response = await fetch('https://api.hypery.ai/v1/chat/completions', {
+    const response = await fetch('https://hypery.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
