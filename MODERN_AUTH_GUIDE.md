@@ -38,7 +38,7 @@ function App() {
       config={{
         clientId: 'your-app-id',
         redirectUri: 'https://yourapp.com/auth/callback',
-        gatewayUrl: 'https://api.hypery.ai',
+        gatewayUrl: 'https://hypery.ai',
       }}
     >
       <YourApp />
