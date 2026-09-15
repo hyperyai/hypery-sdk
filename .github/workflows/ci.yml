@@ -127,6 +127,11 @@ jobs:
           npx semantic-release --dry-run --extends ./.releaserc.json 2>&1 | tee release.log
           VERSION=$(sed -n 's/.*Published release \([0-9.]*\).*/\1/p' release.log | head -1)
           if [ -z "$VERSION" ]; then
+            if grep -q "There are no relevant changes, so no new version is released" release.log; then
+              # docs/chore/build-only commits: nothing to publish, not a failure.
+              echo "No release-worthy commits since the last release; skipping."
+              exit 0
+            fi
             echo "Could not determine next version from semantic-release output"
             exit 1
           fi
@@ -134,6 +139,7 @@ jobs:
           echo "Next version: $VERSION"
 
       - name: Set package version
+        if: steps.next_version.outputs.version != ''
         run: |
           node -e "
           const fs = require('fs');
@@ -145,11 +151,13 @@ jobs:
           VERSION: ${{ steps.next_version.outputs.version }}
 
       - name: Create npm package tarball (@hyperyai/sdk)
+        if: steps.next_version.outputs.version != ''
         run: |
           npm pack
           mv hyperyai-sdk-*.tgz hyperyai-sdk-npm-package.tgz
 
       - name: Create or update release branch and push
+        if: steps.next_version.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -160,6 +168,7 @@ jobs:
           git push origin "$BRANCH" --force
 
       - name: Generate release notes from commits
+        if: steps.next_version.outputs.version != ''
         id: changelog
         run: |
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -177,6 +186,7 @@ jobs:
           } > release-body.md
 
       - name: Create or update GitHub prerelease via API
+        if: steps.next_version.outputs.version != ''
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -219,6 +229,7 @@ jobs:
           echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
 
       - name: Upload npm package to prerelease
+        if: steps.next_version.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
