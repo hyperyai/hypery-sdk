@@ -22,11 +22,13 @@ import { intervalSwitchPath, type PlanInterval } from '../lib/checkout';
 
 export type { PlanInterval } from '../lib/checkout';
 
+/** A plan's price at one billing interval. */
 export interface AppPlanPrice {
   interval: PlanInterval;
   priceCents: number;
 }
 
+/** An app-scoped credit grant configured on a plan. */
 export interface AppPlanGrant {
   type: 'hypery' | 'stripe';
   amountUsd: number;
@@ -34,6 +36,7 @@ export interface AppPlanGrant {
   issueOn: 'each_payment' | 'first_payment_only';
 }
 
+/** A subscription plan of an app. */
 export interface AppPlan {
   id: string;
   appId: string;
@@ -48,6 +51,7 @@ export interface AppPlan {
   grants: AppPlanGrant[];
 }
 
+/** Remaining balance of one grant issued to a subscription. */
 export interface AppSubscriptionGrantBalance {
   type: 'hypery' | 'stripe';
   amountUsd: number;
@@ -55,6 +59,7 @@ export interface AppSubscriptionGrantBalance {
   expiresAt: string;
 }
 
+/** A user's subscription to an app plan. */
 export interface AppSubscription {
   id: string;
   appId: string;
@@ -71,6 +76,7 @@ export interface AppSubscription {
   grants: AppSubscriptionGrantBalance[];
 }
 
+/** Result of `useAppSubscription().switchInterval()`. */
 export interface SwitchIntervalResult {
   success: boolean;
   /** False when nothing changed (already on that interval, no pending switch). */
@@ -82,6 +88,7 @@ export interface SwitchIntervalResult {
   error?: ParsedError;
 }
 
+/** Return value of {@link useAppSubscription}. */
 export interface UseAppSubscriptionReturn {
   plans: AppPlan[];
   subscriptions: AppSubscription[];
@@ -116,6 +123,18 @@ export interface UseAppSubscriptionReturn {
 
 const LIVE = new Set(['active', 'trialing', 'past_due']);
 
+/**
+ * The signed-in user's subscription to your app's plans: plans, live
+ * subscription, remaining grant credit, and subscribe / cancel / resume /
+ * switchInterval actions. Nothing is fetched while signed out.
+ *
+ * @param appId Your app id.
+ * @example
+ * ```tsx
+ * const { plans, isSubscribed, subscribe, cancel } = useAppSubscription('app_123');
+ * ```
+ * @see docs/CHECKOUT.md
+ */
 export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
   const { authenticatedFetch, gatewayUrl, isAuthenticated, isLoading: authLoading } = useHyperyAuth();
   const { checkout } = useCheckout();

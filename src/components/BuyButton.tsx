@@ -16,6 +16,7 @@ import { type BuySuccess } from "../hooks/useMarketplace";
 import { useCheckout } from "../hooks/useCheckout";
 import type { BrandingConfig, ParsedError } from "../types";
 
+/** Props of {@link BuyButton}. */
 export interface BuyButtonProps {
   /** Seller app the purchase is credited to. */
   appId: string;

@@ -2,8 +2,11 @@
 
 import { ParsedError } from '../types';
 
+/** Props of {@link InsufficientCreditsAlert}. */
 export interface InsufficientCreditsAlertProps {
+  /** Parsed error; the alert renders only when `isInsufficientCredits`. */
   error: ParsedError;
+  /** Shows an "Add credits" button. */
   onAddCredits?: () => void;
   className?: string;
 }

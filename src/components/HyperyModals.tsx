@@ -5,6 +5,7 @@ import { useHyperyAuth } from "../lib/context";
 import { AuthModal } from "./AuthModal";
 import { type RestrictionError, RestrictionModal } from "./RestrictionModal";
 
+/** Props of {@link HyperyModals}. */
 export interface HyperyModalsProps {
   /**
    * Branding + auth-form options forwarded to the auto-opened `AuthModal`.
@@ -14,7 +15,9 @@ export interface HyperyModalsProps {
     appName?: string;
     primaryColor?: string;
   };
+  /** Forwarded to `AuthModal`. */
   showSocial?: boolean;
+  /** Forwarded to `AuthModal`. */
   showEmailPassword?: boolean;
   /**
    * Called when the funds modal's retry button is pressed (e.g. re-run the

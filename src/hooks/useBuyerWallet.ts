@@ -14,6 +14,7 @@ import { useHyperyAuth } from "../lib/context";
 import { parseError } from "../lib/parse-error";
 import type { ParsedError } from "../types";
 
+/** A card saved on the buyer's Hypery wallet. */
 export interface BuyerPaymentMethod {
   id: string;
   brand: string;
@@ -23,6 +24,7 @@ export interface BuyerPaymentMethod {
   isDefault: boolean;
 }
 
+/** Options for `useBuyerWallet().addCard()`. */
 export interface AddCardOptions {
   /** Where Stripe returns after a successful card add. Defaults to current URL. */
   successUrl?: string;
@@ -30,6 +32,7 @@ export interface AddCardOptions {
   cancelUrl?: string;
 }
 
+/** Return value of {@link useBuyerWallet}. */
 export interface UseBuyerWalletReturn {
   paymentMethods: BuyerPaymentMethod[];
   hasDefault: boolean;
@@ -48,6 +51,15 @@ function currentLocation(): string {
   return typeof window !== "undefined" ? window.location.href : "";
 }
 
+/**
+ * The buyer's saved cards for marketplace purchases and subscriptions, plus
+ * `addCard()` to start Stripe-hosted card entry (full-page redirect).
+ *
+ * @example
+ * ```tsx
+ * const { hasDefault, addCard } = useBuyerWallet();
+ * ```
+ */
 export function useBuyerWallet(): UseBuyerWalletReturn {
   const { authenticatedFetch, gatewayUrl } = useHyperyAuth();
 

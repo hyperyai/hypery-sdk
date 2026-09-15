@@ -37,6 +37,7 @@ const AUTH_POPUP_NAME = 'hypery-sdk-popup';
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+/** Props of {@link HyperyProvider}. */
 export interface HyperyProviderProps {
   config: HyperyAuthConfig;
   children: ReactNode;

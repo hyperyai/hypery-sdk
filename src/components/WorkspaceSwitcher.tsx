@@ -28,6 +28,7 @@ import {
   type MembershipWorkspace,
 } from '../hooks/useMemberships';
 
+/** Props of {@link WorkspaceSwitcher}. */
 export interface WorkspaceSwitcherProps {
   /** Called after a successful switch — typically `router.refresh()`. */
   onSwitched?: (teamId: string, workspaceId: string) => void;
@@ -39,6 +40,14 @@ export interface WorkspaceSwitcherProps {
   ariaLabel?: string;
 }
 
+/**
+ * Dropdown of the user's teams and workspaces that switches the active one.
+ *
+ * @example
+ * ```tsx
+ * <WorkspaceSwitcher onSwitched={() => router.refresh()} />
+ * ```
+ */
 export function WorkspaceSwitcher({
   onSwitched,
   gatewayUrl,

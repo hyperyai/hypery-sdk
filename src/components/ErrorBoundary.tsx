@@ -4,18 +4,25 @@ import { parseError } from '../lib/parse-error';
 import { SpendingLimitAlert } from './SpendingLimitAlert';
 import { InsufficientCreditsAlert } from './InsufficientCreditsAlert';
 
+/** Props of {@link ErrorBoundary}. */
 export interface ErrorBoundaryProps {
+  /** Any value `parseError` accepts; falsy renders `children`. */
   error: any;
+  /** Retry handler (spending-limit and generic alerts). */
   onRetry?: () => void;
+  /** "Increase limits" handler (spending-limit alert). */
   onUpgradeLimits?: () => void;
+  /** "Add credits" handler (insufficient-credits alert). */
   onAddCredits?: () => void;
   className?: string;
+  /** Rendered when there is no error. */
   children?: React.ReactNode;
 }
 
 /**
- * Universal error boundary component
- * Automatically renders the appropriate error UI based on error type
+ * Universal error display component
+ * Automatically renders the appropriate error UI based on error type.
+ * Note: not a React error boundary — it does not catch render errors.
  */
 export function ErrorBoundary({
   error,

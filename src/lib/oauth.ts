@@ -50,7 +50,8 @@ export async function generatePKCE(): Promise<{
 }
 
 /**
- * Build OAuth authorization URL
+ * Build the OAuth authorization URL. Generates a PKCE pair and stores the
+ * verifier as `hypery_oauth_verifier` (not in `memory` mode).
  */
 export async function getAuthorizationUrl(config: {
   clientId: string;
@@ -91,7 +92,8 @@ export async function getAuthorizationUrl(config: {
 }
 
 /**
- * Exchange authorization code for access token
+ * Exchange an authorization code for tokens using the stored PKCE verifier.
+ * Throws when the verifier is missing or the token request fails.
  */
 export async function exchangeCodeForToken(
   code: string,
@@ -155,7 +157,7 @@ export async function exchangeCodeForToken(
 }
 
 /**
- * Refresh access token
+ * Exchange a refresh token for new tokens. Throws on failure.
  */
 export async function refreshAccessToken(
   refreshToken: string,
@@ -194,7 +196,7 @@ export async function refreshAccessToken(
 }
 
 /**
- * Get user info from access token
+ * Fetch the signed-in user (`GET {gatewayUrl}/api/user/me`). Throws on a non-2xx response.
  */
 export async function getUserInfo(
   accessToken: string,

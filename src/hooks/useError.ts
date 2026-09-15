@@ -4,10 +4,15 @@ import { useState, useCallback } from 'react';
 import { parseError } from '../lib/parse-error';
 import type { ParsedError } from '../types';
 
+/** Return value of {@link useError}. */
 export interface UseErrorReturn {
+  /** The parsed error, or null. */
   error: ParsedError | null;
+  /** Parse and store any error value (response body, thrown error); falsy clears. */
   setError: (error: any) => void;
+  /** Clear the error. */
   clearError: () => void;
+  /** `error !== null`. */
   hasError: boolean;
   isSpendingLimit: boolean;
   isInsufficientCredits: boolean;
@@ -20,7 +25,13 @@ export interface UseErrorReturn {
 }
 
 /**
- * Hook for managing error state with automatic parsing
+ * Hook for managing error state with automatic parsing via `parseError`.
+ *
+ * @example
+ * ```tsx
+ * const { setError, isBillingRestriction } = useError();
+ * if (!res.ok) setError({ ...(await res.json()), status: res.status });
+ * ```
  */
 export function useError(): UseErrorReturn {
   const [error, setErrorState] = useState<ParsedError | null>(null);

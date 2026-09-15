@@ -3,9 +3,13 @@
 import { ParsedError } from '../types';
 import { formatTimeUntilReset } from '../lib/parse-error';
 
+/** Props of {@link SpendingLimitAlert}. */
 export interface SpendingLimitAlertProps {
+  /** Parsed error; the alert renders only when `isSpendingLimit`. */
   error: ParsedError;
+  /** Shows a "Try again" button. */
   onRetry?: () => void;
+  /** Shows an "Increase limits" button. */
   onUpgradeLimits?: () => void;
   className?: string;
 }

@@ -13,6 +13,7 @@ import { parseError } from "./parse-error";
  * envelope inside the frame's `data:` (see lib/errors/api-error.ts).
  */
 
+/** One parsed SSE frame. */
 export interface SSEEvent {
   /** The `event:` name, if the frame set one (e.g. `error`). */
   event?: string;
@@ -65,6 +66,7 @@ export function parseSSEError(frame: SSEEvent | string): ParsedError | null {
   return isErrorEvent || hasEnvelope ? parseError(payload) : null;
 }
 
+/** Callbacks for {@link consumeSSEStream}. */
 export interface SSEStreamHandlers {
   /** Called with each normal SSE `data:` payload (e.g. an OpenAI delta chunk). */
   onData?: (data: string) => void;
