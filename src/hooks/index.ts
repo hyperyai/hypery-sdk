@@ -69,6 +69,9 @@ export { useAppSubscription } from './useAppSubscription';
 export type {
   AppPlan,
   AppPlanGrant,
+  AppPlanPrice,
+  PlanInterval,
+  SwitchIntervalResult,
   AppSubscription,
   AppSubscriptionGrantBalance,
   UseAppSubscriptionReturn,

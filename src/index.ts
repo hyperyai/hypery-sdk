@@ -54,6 +54,9 @@ export type {
   UseCheckoutReturn,
   AppPlan,
   AppPlanGrant,
+  AppPlanPrice,
+  PlanInterval,
+  SwitchIntervalResult,
   AppSubscription,
   AppSubscriptionGrantBalance,
   UseAppSubscriptionReturn,
@@ -80,6 +83,7 @@ export { BuyButton } from './components/BuyButton';
 export type { BuyButtonProps } from './components/BuyButton';
 
 // Subscribe to an app's plan via Hypery.
+export { planPriceCents } from './lib/checkout';
 export { SubscribeButton } from './components/SubscribeButton';
 export type { SubscribeButtonProps } from './components/SubscribeButton';
 

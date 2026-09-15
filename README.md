@@ -316,8 +316,32 @@ function Pricing({ appId }: { appId: string }) {
 }
 ```
 
+#### Annual billing
+
+Plans can offer a monthly and a yearly price (`plan.prices`, one entry per
+offered interval; `planPriceCents(plan, 'year')` reads it, falling back to the
+legacy monthly `priceCents`). Pass `interval="year"` to bill annually. Annual
+subscribers are billed once a year but still receive their grants monthly
+(`nextGrantAt`). Subscribing on an interval the plan doesn't offer fails with
+`INTERVAL_NOT_OFFERED`.
+
+```tsx
+import { planPriceCents, SubscribeButton, useAppSubscription } from '@hyperyai/sdk';
+
+const yearly = planPriceCents(plan, 'year');
+{yearly !== null && <SubscribeButton planId={plan.id} priceCents={yearly} interval="year" />}
+
+// Existing subscribers
+const { interval, pendingInterval, nextGrantAt, switchInterval } = useAppSubscription(appId);
+await switchInterval(undefined, 'year');  // charged now (may fail with PAYMENT_DECLINED)
+await switchInterval(undefined, 'month'); // effective at period end → pendingInterval === 'month'
+await switchInterval(undefined, 'year');  // while that's pending: cancels the pending switch
+```
+
+`switchInterval` resolves to `{ success, changed, effective: 'now' | 'period_end', at?, subscription, error? }`.
+
 Programmatic use goes through `useCheckout`:
-`checkout({ kind: 'subscription', planId })`. If the card needs 3-D Secure, the
+`checkout({ kind: 'subscription', planId, interval? })`. If the card needs 3-D Secure, the
 result is an error with `error.code === 'PAYMENT_INCOMPLETE'`, and
 `result.data.error.clientSecret` / `stripeAccount` can be confirmed with
 Stripe.js. See the [Subscription Plans API](https://hypery.ai/docs/management-apis/subscription-plans).

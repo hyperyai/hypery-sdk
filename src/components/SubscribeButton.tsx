@@ -19,7 +19,10 @@ export interface SubscribeButtonProps {
   planId: string;
   /** Price shown on the button, in cents (display only — Hypery charges the plan's price). */
   priceCents?: number;
-  /** Billing interval shown on the button. */
+  /**
+   * Billing interval to subscribe on (also shown next to the price). Defaults to
+   * monthly. Pass `"year"` for annual billing — the plan must offer a yearly price.
+   */
   interval?: "month" | "year";
   /** Button label. Defaults to "Subscribe" (+ price when given). */
   label?: React.ReactNode;
@@ -58,7 +61,7 @@ export function SubscribeButton({
 
   const run = async () => {
     setArmed(false);
-    const result = await checkout({ kind: "subscription", planId });
+    const result = await checkout({ kind: "subscription", planId, ...(interval ? { interval } : {}) });
     if (result.status === "success") {
       onSuccess?.(result.data);
       return;

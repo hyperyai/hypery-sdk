@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { CHECKOUT_ENDPOINTS, chargeBody, needsCard, withIdempotency } from '../checkout';
+import { CHECKOUT_ENDPOINTS, chargeBody, intervalSwitchPath, needsCard, planPriceCents, withIdempotency } from '../checkout';
 import { parseError } from '../parse-error';
 
 describe('checkout helpers', () => {
@@ -31,5 +31,30 @@ describe('checkout helpers', () => {
     expect(needsCard(e('PAYMENT_INCOMPLETE'), 402)).toBe(false);
     expect(needsCard(e('PAYMENT_DECLINED'), 402)).toBe(false);
     expect(needsCard(e('SUBSCRIPTION_IN_PROGRESS'), 409)).toBe(false);
+  });
+
+  it('sends the billing interval to subscribe only when given (backward compatible)', () => {
+    expect(chargeBody({ kind: 'subscription', planId: 'p', idempotencyKey: 'k', interval: 'year' })).toEqual({ planId: 'p', idempotencyKey: 'k', interval: 'year' });
+    expect(chargeBody({ kind: 'subscription', planId: 'p', idempotencyKey: 'k' })).not.toHaveProperty('interval');
+  });
+
+  it('keeps the interval through idempotency + redirect persistence (retry after add-card)', () => {
+    const input = withIdempotency({ kind: 'subscription', planId: 'p', interval: 'year' });
+    const resumed = JSON.parse(JSON.stringify({ input, attempts: 1 })).input;
+    expect(chargeBody(resumed)).toMatchObject({ planId: 'p', interval: 'year' });
+    expect(chargeBody(resumed)).toEqual(chargeBody(input));
+  });
+
+  it('builds the interval switch path', () => {
+    expect(intervalSwitchPath('sub/1')).toBe('/api/marketplace/subscriptions/sub%2F1/interval');
+  });
+
+  it('resolves a plan price per interval with legacy fallback', () => {
+    const plan = { priceCents: 1000, interval: 'month' as const, prices: [{ interval: 'month' as const, priceCents: 1000 }, { interval: 'year' as const, priceCents: 10000 }] };
+    expect(planPriceCents(plan, 'year')).toBe(10000);
+    expect(planPriceCents(plan)).toBe(1000);
+    expect(planPriceCents({ ...plan, prices: [plan.prices[0]] }, 'year')).toBeNull();
+    expect(planPriceCents({ priceCents: 500, interval: 'month' }, 'month')).toBe(500);
+    expect(planPriceCents({ priceCents: 500, interval: 'month' }, 'year')).toBeNull();
   });
 });
