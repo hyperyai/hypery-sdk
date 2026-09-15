@@ -13,9 +13,10 @@
  *               auto-resumed when the user returns (robust on mobile / blocked
  *               popups). `auto` falls back to redirect there automatically.
  *
- * Covers two charge kinds:
- *   - `purchase` — a marketplace Connect charge (POST /api/marketplace/checkout).
- *   - `topup`    — buy AI credits (POST /api/wallet/topup).
+ * Covers three charge kinds:
+ *   - `purchase`     — a marketplace Connect charge (POST /api/marketplace/checkout).
+ *   - `topup`        — buy AI credits (POST /api/wallet/topup).
+ *   - `subscription` — subscribe to an app plan (POST /api/marketplace/subscribe).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -23,25 +24,19 @@ import { useHyperyAuth } from '../lib/context';
 import { openPopup } from '../lib/popup';
 import { parseError } from '../lib/parse-error';
 import type { ParsedError } from '../types';
+import {
+  CHECKOUT_ENDPOINTS as ENDPOINTS,
+  chargeBody,
+  needsCard,
+  withIdempotency,
+  type CheckoutInput,
+} from '../lib/checkout';
+
+export type { CheckoutInput } from '../lib/checkout';
 
 const PENDING_KEY = 'hypery_pending_checkout';
 const MAX_ATTEMPTS = 3; // auth redirect + card redirect + margin; guards against loops
 const CARD_POPUP_NAME = 'hypery-add-card';
-
-export type CheckoutInput =
-  | {
-      kind: 'purchase';
-      appId: string;
-      amountCents: number;
-      description?: string;
-      /** Stable key so a resumed/retried charge is not double-billed. Auto-generated if omitted. */
-      idempotencyKey?: string;
-    }
-  | {
-      kind: 'topup';
-      /** USD amount of credits to buy. */
-      usdAmount: number;
-    };
 
 export type CheckoutStatus =
   | 'idle'
@@ -66,11 +61,6 @@ export interface UseCheckoutReturn {
   isRunning: boolean;
   error: ParsedError | null;
 }
-
-const ENDPOINTS = {
-  purchase: { charge: '/api/marketplace/checkout', cardSetup: '/api/buyer/wallet/checkout-setup' },
-  topup: { charge: '/api/wallet/topup', cardSetup: '/api/payments/stripe/checkout-setup' },
-} as const;
 
 // Module-level guard so a redirect-resume runs exactly once per page load, even
 // if several components mount useCheckout.
@@ -106,17 +96,6 @@ function currentUrl(): string {
   return typeof window !== 'undefined' ? window.location.href : '';
 }
 
-function withIdempotency(input: CheckoutInput): CheckoutInput {
-  if (input.kind === 'purchase' && !input.idempotencyKey) {
-    const key =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `idem_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
-    return { ...input, idempotencyKey: key };
-  }
-  return input;
-}
-
 export function useCheckout(): UseCheckoutReturn {
   const { isAuthenticated, isLoading, loginPopup, login, interactionMode, gatewayUrl, getAccessToken } =
     useHyperyAuth();
@@ -148,16 +127,6 @@ export function useCheckout(): UseCheckoutReturn {
     },
     [gatewayUrl, getAccessToken],
   );
-
-  const chargeBody = (input: CheckoutInput) =>
-    input.kind === 'purchase'
-      ? {
-          appId: input.appId,
-          amountCents: input.amountCents,
-          description: input.description,
-          idempotencyKey: input.idempotencyKey,
-        }
-      : { amount: input.usdAmount };
 
   /** Open the Stripe-hosted card-entry popup and wait for it to finish (or close). */
   const addCardPopup = useCallback(
@@ -244,7 +213,7 @@ export function useCheckout(): UseCheckoutReturn {
           const parsed = parseError({ ...body, status: res.status });
 
           // Needs a card → add one, then retry the charge once.
-          if ((parsed.isPaymentMethodRequired || res.status === 402) && charge === 0) {
+          if (needsCard(parsed, res.status) && charge === 0) {
             setStatus('adding-card');
             if (interactionMode === 'popup') {
               const ok = await addCardPopup(input);
@@ -262,11 +231,12 @@ export function useCheckout(): UseCheckoutReturn {
             }
           }
 
-          // Any other error is terminal for this flow.
+          // Any other error is terminal for this flow. The raw body rides along so
+          // callers can act on details (e.g. a subscription's SCA clientSecret).
           clearPending();
           setError(parsed);
           setStatus('error');
-          return { status: 'error', error: parsed };
+          return { status: 'error', error: parsed, data: body };
         }
 
         // Retried once after adding a card and still not ok.
