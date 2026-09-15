@@ -9,14 +9,23 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { useHyperyAuth } from '../lib/context';
 
+/** Props of {@link AuthModal}. */
 export interface AuthModalProps {
+  /** Whether the dialog is open. */
   isOpen: boolean;
+  /** Called when the dialog is dismissed. */
   onClose: () => void;
+  /** Initial mode. Defaults to `signin`. */
   initialMode?: 'signin' | 'signup';
+  /** Called after `login()` resolves. */
   onSuccess?: () => void;
+  /** Called if `login()` throws. */
   onError?: (error: string) => void;
+  /** Show Google/GitHub buttons. Defaults to true. */
   showSocial?: boolean;
+  /** Show the email/password form (not yet functional). Defaults to false. */
   showEmailPassword?: boolean;
+  /** Logo, app name and accent color. */
   branding?: {
     logo?: string;
     appName?: string;
@@ -24,6 +33,14 @@ export interface AuthModalProps {
   };
 }
 
+/**
+ * Controlled sign-in / sign-up dialog. The social buttons call `login()`.
+ *
+ * @example
+ * ```tsx
+ * <AuthModal isOpen={open} onClose={() => setOpen(false)} branding={{ appName: 'Acme' }} />
+ * ```
+ */
 export function AuthModal({
   isOpen,
   onClose,

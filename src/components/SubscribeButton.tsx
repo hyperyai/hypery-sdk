@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useCheckout, type CheckoutResult } from "../hooks/useCheckout";
 import type { BrandingConfig, ParsedError } from "../types";
 
+/** Props of {@link SubscribeButton}. */
 export interface SubscribeButtonProps {
   /** Plan id (from useAppSubscription().plans or GET /api/marketplace/plans). */
   planId: string;
@@ -45,6 +46,14 @@ function priceText(priceCents?: number, interval?: "month" | "year"): string {
   return ` · $${(priceCents / 100).toFixed(2)}${interval ? `/${interval === "month" ? "mo" : "yr"}` : ""}`;
 }
 
+/**
+ * Subscribe the user to one of your app's plans (login and card entry handled).
+ *
+ * @example
+ * ```tsx
+ * <SubscribeButton planId={plan.id} priceCents={plan.priceCents} interval="month" />
+ * ```
+ */
 export function SubscribeButton({
   planId,
   priceCents,

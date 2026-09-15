@@ -14,6 +14,7 @@ import { useHyperyAuth } from "../lib/context";
 import { isPaymentMethodRequiredError, parseError } from "../lib/parse-error";
 import type { ParsedError } from "../types";
 
+/** Input of `useMarketplace().buy()`. */
 export interface BuyInput {
   /** Seller app the purchase is credited to. */
   appId: string;
@@ -40,6 +41,7 @@ function newIdempotencyKey(): string {
   return `mkt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
 
+/** A successful marketplace charge. */
 export interface BuySuccess {
   ok: true;
   paymentIntentId: string;
@@ -48,6 +50,7 @@ export interface BuySuccess {
   applicationFeeCents: number;
 }
 
+/** A failed marketplace charge (never thrown). */
 export interface BuyFailure {
   ok: false;
   error: ParsedError;
@@ -57,8 +60,10 @@ export interface BuyFailure {
   needsAuth: boolean;
 }
 
+/** Result of `useMarketplace().buy()`. */
 export type BuyResult = BuySuccess | BuyFailure;
 
+/** Return value of {@link useMarketplace}. */
 export interface UseMarketplaceReturn {
   /** Run a marketplace checkout. Never throws for expected billing errors. */
   buy: (input: BuyInput) => Promise<BuyResult>;
@@ -66,6 +71,17 @@ export interface UseMarketplaceReturn {
   lastError: ParsedError | null;
 }
 
+/**
+ * Single marketplace charge against the buyer's saved card
+ * (`POST /api/marketplace/checkout`), without login or card-entry
+ * orchestration (use `useCheckout` for that).
+ *
+ * @example
+ * ```tsx
+ * const { buy } = useMarketplace();
+ * const r = await buy({ appId: 'app_123', amountCents: 499, idempotencyKey: orderId });
+ * ```
+ */
 export function useMarketplace(): UseMarketplaceReturn {
   const { authenticatedFetch, gatewayUrl } = useHyperyAuth();
 

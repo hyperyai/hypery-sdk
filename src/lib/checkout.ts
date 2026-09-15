@@ -7,6 +7,7 @@ import type { ParsedError } from '../types';
 /** How often a subscription is billed. Grants are issued monthly either way. */
 export type PlanInterval = 'month' | 'year';
 
+/** What `useCheckout().checkout()` should charge: a marketplace purchase, an AI-credit top-up, or a plan subscription. */
 export type CheckoutInput =
   | {
       kind: 'purchase';

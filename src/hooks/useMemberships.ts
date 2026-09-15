@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
 
+/** A workspace the user belongs to. `isActive` is derived from `activeWorkspaceId`. */
 export interface MembershipWorkspace {
   id: string;
   name: string;
@@ -22,6 +23,7 @@ export interface MembershipWorkspace {
   isActive: boolean;
 }
 
+/** A team (organization) the user belongs to. */
 export interface MembershipTeam {
   id: string;
   name: string;
@@ -30,11 +32,13 @@ export interface MembershipTeam {
   role: 'owner' | 'admin' | 'developer' | 'viewer';
 }
 
+/** One team with its workspaces. */
 export interface MembershipEntry {
   team: MembershipTeam;
   workspaces: MembershipWorkspace[];
 }
 
+/** Response of `GET /api/auth/list_memberships`. */
 export interface MembershipsResponse {
   activeOrganizationId: string | null;
   activeWorkspaceId: string | null;
@@ -117,6 +121,7 @@ export function useMemberships(): MembershipsState {
   return { data, isLoading, error, reload: load };
 }
 
+/** The resolved active team + workspace. */
 export interface ActiveWorkspace {
   teamId: string;
   teamName: string;

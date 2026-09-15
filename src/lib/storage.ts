@@ -7,6 +7,17 @@ import type { AuthTokens, User } from '../types';
 const TOKEN_KEY = 'hypery_auth_tokens';
 const USER_KEY = 'hypery_auth_user';
 
+/**
+ * Reads and writes auth tokens and the cached user in `localStorage`,
+ * `sessionStorage`, or memory (also used automatically when `window` is
+ * undefined, e.g. during SSR).
+ *
+ * @example
+ * ```ts
+ * const storage = new TokenStorage('sessionStorage');
+ * if (storage.isTokenExpired()) { ... }
+ * ```
+ */
 export class TokenStorage {
   private storage: Storage | Map<string, string>;
   private storageType: 'localStorage' | 'sessionStorage' | 'memory';
@@ -60,7 +71,7 @@ export class TokenStorage {
   }
 
   /**
-   * Check if access token is expired
+   * Check if access token is expired (true when missing, or within 60s of expiry)
    */
   isTokenExpired(): boolean {
     const tokens = this.getTokens();

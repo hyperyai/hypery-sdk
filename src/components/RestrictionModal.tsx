@@ -2,6 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 
+/**
+ * Flat error object accepted by {@link RestrictionModal}: `code`/`message`
+ * plus the code-specific fields spread at the top level.
+ */
 export interface RestrictionError {
   code: string;
   message: string;
@@ -32,6 +36,7 @@ interface WalletState {
 }
 
 interface RestrictionModalProps {
+  /** Error to resolve; `null` hides the modal. */
   error: RestrictionError | null;
   /** OAuth clientId of the app making the requests. Preferred name. */
   clientId?: string;
@@ -40,9 +45,13 @@ interface RestrictionModalProps {
    * not the DB app id. Kept as a backward-compatible alias.
    */
   appId?: string;
+  /** Hypery base URL. */
   gatewayUrl: string;
+  /** Usually `useAuth().getAccessToken`. */
   getAccessToken: () => Promise<string | null>;
+  /** Close handler. */
   onClose: () => void;
+  /** Retry the blocked request. */
   onRetry?: () => void;
   /** Called after funds/card are successfully added. */
   onFunded?: () => void;

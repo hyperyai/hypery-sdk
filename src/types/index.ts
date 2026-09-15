@@ -34,6 +34,10 @@ export interface BrandingConfig {
   primaryColor?: string;
 }
 
+/**
+ * Configuration for `<HyperyProvider config={...}>`.
+ * @see docs/PROVIDER.md
+ */
 export interface HyperyAuthConfig {
   /** OAuth Client ID */
   clientId: string;
@@ -41,9 +45,13 @@ export interface HyperyAuthConfig {
   redirectUri: string;
   /** Hypery base URL */
   gatewayUrl: string;
-  /** OAuth scopes to request */
+  /**
+   * OAuth scopes to request. Defaults to
+   * `['read', 'write', 'ai:chat', 'ai:completions', 'ai:models', 'ai:images', 'billing:read']`.
+   * Add `billing:charge` for checkout and subscriptions.
+   */
   scopes?: string[];
-  /** Storage type for tokens */
+  /** Where tokens, the cached user and the PKCE verifier are stored. Defaults to `localStorage`. */
   storage?: 'localStorage' | 'sessionStorage' | 'memory';
   /**
    * How interactive auth / card-entry steps in the auth+charge flow are shown.
@@ -66,6 +74,7 @@ export interface HyperyAuthConfig {
   onRestricted?: (error: ParsedError) => void;
 }
 
+/** The signed-in Hypery user (from `GET /api/user/me`). */
 export interface User {
   id: string;
   email: string;
@@ -73,6 +82,7 @@ export interface User {
   image?: string;
 }
 
+/** OAuth tokens as stored by {@link TokenStorage}. `expiresIn` is in seconds. */
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
@@ -80,15 +90,19 @@ export interface AuthTokens {
   tokenType: string;
 }
 
+/** Auth state portion of {@link AuthContextValue}. */
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  /** True from `logout()` until the page navigates away. */
   isLoggingOut?: boolean;
 }
 
+/** Value returned by `useAuth()` / `useHyperyAuth()`. */
 export interface AuthContextValue extends AuthState {
+  /** Redirect to the Hypery authorize page (PKCE). */
   login: () => Promise<void>;
   /**
    * Log in via a centered popup (no full-page redirect). Resolves once the popup
@@ -101,8 +115,11 @@ export interface AuthContextValue extends AuthState {
   interactionMode: ResolvedMode;
   /** The redirectUri this provider was configured with. */
   redirectUri: string;
+  /** Like `login`, but always forces account selection (`prompt=select_account`). */
   signUp?: () => Promise<void>;
+  /** Revoke the access token, clear storage, then navigate to `/`. */
   logout: () => Promise<void>;
+  /** Reload the user from the gateway. */
   refreshAuth: () => Promise<void>;
   /**
    * Get a valid access token, refreshing if the local expiry clock says so.
@@ -135,6 +152,7 @@ export interface AuthContextValue extends AuthState {
  * Error response types from Hypery API
  */
 
+/** Payload of a `SPENDING_LIMIT_EXCEEDED` error (HTTP 429). */
 export interface SpendingLimitErrorData {
   code: 'SPENDING_LIMIT_EXCEEDED';
   message: string;
@@ -146,6 +164,7 @@ export interface SpendingLimitErrorData {
   resetsAt?: string;
 }
 
+/** Payload of an `INSUFFICIENT_CREDITS` error (HTTP 402). */
 export interface InsufficientCreditsErrorData {
   code: 'INSUFFICIENT_CREDITS';
   message: string;
@@ -154,12 +173,14 @@ export interface InsufficientCreditsErrorData {
   required: number;
 }
 
+/** Payload of a `PAYMENT_METHOD_REQUIRED` error (HTTP 402, metered billing). */
 export interface PaymentMethodRequiredErrorData {
   code: 'PAYMENT_METHOD_REQUIRED';
   message: string;
   type: 'payment_method_required_error';
 }
 
+/** Payload of a `PAYMENT_DECLINED` error (HTTP 402). */
 export interface PaymentDeclinedErrorData {
   code: 'PAYMENT_DECLINED';
   message: string;
@@ -167,12 +188,14 @@ export interface PaymentDeclinedErrorData {
   reason?: string;
 }
 
+/** Payload of an `UNAUTHENTICATED` error (HTTP 401). */
 export interface AuthenticationErrorData {
   code: 'UNAUTHENTICATED';
   message: string;
   type: 'authentication_error';
 }
 
+/** Any other error payload. */
 export interface GenericErrorData {
   code: string;
   message: string;
@@ -180,6 +203,7 @@ export interface GenericErrorData {
   [key: string]: any;
 }
 
+/** Union of the known error payloads (the inner object of the `{ error }` envelope). */
 export type ErrorData =
   | SpendingLimitErrorData
   | InsufficientCreditsErrorData
@@ -188,6 +212,7 @@ export type ErrorData =
   | AuthenticationErrorData
   | GenericErrorData;
 
+/** The gateway's error envelope: `{ error: { code, message, type, ... } }`. */
 export interface ErrorResponse {
   error: ErrorData;
 }
@@ -201,9 +226,13 @@ export interface ParsedError {
   type?: string;
   /** HTTP status, when the caller attaches it (used as a classification fallback). */
   status?: number;
+  /** `SPENDING_LIMIT_EXCEEDED`. */
   isSpendingLimit: boolean;
+  /** `INSUFFICIENT_CREDITS` (or a bare 402). */
   isInsufficientCredits: boolean;
+  /** `PAYMENT_METHOD_REQUIRED`. */
   isPaymentMethodRequired: boolean;
+  /** `PAYMENT_DECLINED`. */
   isPaymentDeclined: boolean;
   /** True for an authentication failure (401 / UNAUTHENTICATED) — drive re-auth. */
   isAuth: boolean;
@@ -211,6 +240,7 @@ export interface ParsedError {
   isPermissionDenied: boolean;
   /** True for a rate-limit denial (429 / RATE_LIMITED). */
   isRateLimit: boolean;
+  /** The unwrapped error object, including code-specific fields. */
   data: ErrorData;
 }
 

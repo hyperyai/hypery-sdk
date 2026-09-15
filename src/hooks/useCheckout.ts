@@ -38,6 +38,7 @@ const PENDING_KEY = 'hypery_pending_checkout';
 const MAX_ATTEMPTS = 3; // auth redirect + card redirect + margin; guards against loops
 const CARD_POPUP_NAME = 'hypery-add-card';
 
+/** Current step of the checkout flow. */
 export type CheckoutStatus =
   | 'idle'
   | 'authenticating'
@@ -48,12 +49,17 @@ export type CheckoutStatus =
   | 'error'
   | 'cancelled';
 
+/**
+ * Outcome of `checkout()`. On a gateway error `data` carries the raw response
+ * body (e.g. a subscription's SCA `clientSecret`).
+ */
 export interface CheckoutResult {
   status: 'success' | 'error' | 'cancelled' | 'redirecting';
   data?: any;
   error?: ParsedError;
 }
 
+/** Return value of {@link useCheckout}. */
 export interface UseCheckoutReturn {
   /** Run the auth+charge flow. Resolves when the chain finishes (or is redirecting away). */
   checkout: (input: CheckoutInput) => Promise<CheckoutResult>;
@@ -96,6 +102,17 @@ function currentUrl(): string {
   return typeof window !== 'undefined' ? window.location.href : '';
 }
 
+/**
+ * Run the auth + charge flow (log in, charge, add a card if needed, retry) as
+ * popups or redirects per `config.interactionMode`.
+ *
+ * @example
+ * ```tsx
+ * const { checkout, isRunning } = useCheckout();
+ * await checkout({ kind: 'topup', usdAmount: 20 });
+ * ```
+ * @see docs/CHECKOUT.md
+ */
 export function useCheckout(): UseCheckoutReturn {
   const { isAuthenticated, isLoading, loginPopup, login, interactionMode, gatewayUrl, getAccessToken } =
     useHyperyAuth();

@@ -203,7 +203,8 @@ export function isBillingRestriction(error: any): boolean {
 }
 
 /**
- * Format time until reset
+ * Format an ISO timestamp relative to now: `''` if missing, `'soon'` if past,
+ * otherwise `'in 3h 12m'` / `'in 12m'`.
  */
 export function formatTimeUntilReset(resetsAt?: string): string {
   if (!resetsAt) return '';

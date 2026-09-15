@@ -1,84 +1,124 @@
-# @hyperyai/sdk — React Component Gallery
+# Components
 
-Drop-in **authentication components** for any React/Next.js app that signs users in
-through the Hypery gateway. Every screenshot below is a real render of the component
-from the `auth-demo` example in [hypery-examples](https://github.com/hyperyai/hypery-examples).
+Drop-in React components for signing users in, gating content and switching
+workspaces. Every component must be rendered inside
+[`HyperyProvider`](./PROVIDER.md). Components are styled with Tailwind utility
+classes, so your app needs Tailwind for the default look; pass `className` to
+restyle. Screenshots are real renders from the `auth-demo` example in
+[hypery-examples](https://github.com/hyperyai/hypery-examples).
 
-> Quick links: [Setup](#setup) · [Auth components](#authentication-components) · [Control components](#conditional-rendering) · [Hooks](#hooks) · [Billing components](#billing-components)
-
----
-
-## Setup
-
-Wrap your app once in `HyperyProvider`. All components and hooks read from it.
-
-```tsx
-// app/layout.tsx (Next.js App Router)
-import { HyperyProvider } from '@hyperyai/sdk';
-
-export default function RootLayout({ children }) {
-  return (
-    <html>
-      <body>
-        <HyperyProvider
-          config={{
-            clientId: process.env.NEXT_PUBLIC_OAUTH_CLIENT_ID!,
-            redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI!,   // e.g. https://yourapp.com/callback
-            gatewayUrl: process.env.NEXT_PUBLIC_AUTH_URL!,        // the Hypery gateway, e.g. https://hypery.ai
-            scopes: ['read', 'write', 'ai:chat', 'billing:read'],
-            storage: 'localStorage',
-          }}
-        >
-          {children}
-        </HyperyProvider>
-      </body>
-    </html>
-  );
-}
-```
-
-The full component gallery (the screenshots below come from this page):
+> Back to [README](../README.md) · Checkout buttons: [CHECKOUT.md](./CHECKOUT.md) · Error UI: [ERRORS.md](./ERRORS.md)
 
 ![Component gallery overview](./screenshots/examples-overview.png)
+
+Contents: [SignIn](#signin) · [SignUp](#signup) · [SignInForm](#signinform) ·
+[AuthButton](#authbutton) · [AuthModal](#authmodal) · [ModernAuthForm](#modernauthform) ·
+[UserButton](#userbutton) · [UserProfile](#userprofile) · [WorkspaceSwitcher](#workspaceswitcher) ·
+[Control components](#control-components)
+
+A note on auth forms: the email/password fields in `SignInForm`, `AuthModal`
+and `ModernAuthForm` only validate input and show a "not yet supported" message.
+Real sign-in goes through the social buttons, which call `login()` (a redirect to
+Hypery's hosted login, where the user picks a provider).
 
 ---
 
 ## Authentication components
 
-### `<SignInForm />`
+### `SignIn`
 
-An embedded email/password + social login card. Use it when you want sign-in to live
-**inline** on a page rather than behind a modal or redirect.
+A button that calls `login()`. Disabled and labelled "Loading..." while auth is loading.
+
+| `<SignIn />` | `<SignUp />` |
+|---|---|
+| ![SignIn](./screenshots/signin.png) | ![SignUp](./screenshots/signup.png) |
+
+```tsx
+import { SignIn } from '@hyperyai/sdk';
+
+<SignIn buttonText="Sign in with Hypery" variant="primary" />
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `buttonText` | `string` | `'Sign in with Hypery'` | Label. |
+| `variant` | `'primary' \| 'secondary' \| 'outline'` | `'primary'` | Built-in style. |
+| `className` | `string` | none | Replaces (not appends to) the default classes. |
+| `redirectTo` | `string` | none | Saved to `sessionStorage` as `hypery_redirect_after_login`. The SDK does not read it back; your callback page may. |
+| `loading` | `boolean` | none | Force the disabled/loading state. |
+
+### `SignUp`
+
+A button that calls `signUp()` (login with `prompt=select_account`), falling back to `login()`.
+
+```tsx
+import { SignUp } from '@hyperyai/sdk';
+
+<SignUp buttonText="Get started" onSignUpStart={() => track('signup')} />
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `buttonText` | `string` | `'Sign up'` | Label. |
+| `variant` | `'primary' \| 'secondary' \| 'outline'` | `'primary'` | Built-in style. |
+| `className` | `string` | none | Replaces the default classes. |
+| `onSignUpStart` | `() => void` | none | Called before the redirect starts. |
+| `redirectUrl` | `string` | none | Accepted but currently unused. |
+
+### `SignInForm`
+
+An embedded card with GitHub/Google buttons, an email/password form and a
+"Sign up" link.
 
 ![SignInForm](./screenshots/signinform.png)
 
 ```tsx
 import { SignInForm } from '@hyperyai/sdk';
 
-<SignInForm
-  showSocial            // Continue with Google / GitHub
-  showEmailPassword
-  title="Welcome back"
-  description="Sign in to continue"
-  onSuccess={(user) => router.push('/dashboard')}
-  onError={(err) => toast.error(err.message)}
-/>
+<SignInForm title="Welcome back" description="Sign in to continue" showEmailPassword={false} />
 ```
 
-| Prop | Type | Description |
-|---|---|---|
-| `showCard` | `boolean` | Wrap in a card surface (default true) |
-| `showSocial` | `boolean` | Show Google/GitHub buttons |
-| `showEmailPassword` | `boolean` | Show the email/password form |
-| `title` / `description` | `string` | Heading copy |
-| `onSuccess` / `onError` | `(arg) => void` | Result callbacks |
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `showCard` | `boolean` | `true` | White card surface. |
+| `showTitle` | `boolean` | `true` | Render title + description. |
+| `title` | `string` | `'Sign in to continue'` | Heading. |
+| `description` | `string` | `'Choose your preferred sign-in method'` | Sub-heading. |
+| `showSocial` | `boolean` | `true` | GitHub and Google buttons (both call `login()`). |
+| `showEmailPassword` | `boolean` | `true` | Email/password form (see note above). |
+| `onSuccess` | `() => void` | none | Called right after `login()` is started, i.e. before the redirect completes. |
+| `onError` | `(error: string) => void` | none | Called if starting login throws synchronously. |
+| `className` | `string` | none | Appended to the container. |
 
----
+### `AuthButton`
 
-### `<AuthModal />`
+A button that opens an [`AuthModal`](#authmodal).
 
-A controlled modal for sign-in / sign-up — ideal for "Sign in" buttons in a navbar.
-Supports custom branding (logo, app name, primary color).
+```tsx
+import { AuthButton } from '@hyperyai/sdk';
+
+<AuthButton variant="outline" mode="signup" branding={{ appName: 'Acme' }}>
+  Get started
+</AuthButton>
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `children` | `ReactNode` | `'Sign In'` | Label. |
+| `variant` | `'primary' \| 'secondary' \| 'outline' \| 'ghost'` | `'primary'` | Style. |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Size. |
+| `className` | `string` | `''` | Appended classes. |
+| `mode` | `'signin' \| 'signup'` | `'signin'` | Initial modal mode. |
+| `onSuccess` | `() => void` | none | Called when the modal reports success (the modal also closes). |
+| `showSocial` | `boolean` | `true` | Forwarded to the modal. |
+| `showEmailPassword` | `boolean` | `true` | Forwarded to the modal. |
+| `branding` | `BrandingConfig` | none | Forwarded to the modal. |
+
+The props type is exported as `AuthButtonProps`.
+
+### `AuthModal`
+
+A controlled sign-in / sign-up dialog with optional branding.
 
 ![AuthModal (open)](./screenshots/authmodal-open.png)
 
@@ -91,146 +131,170 @@ const [open, setOpen] = useState(false);
 <AuthModal
   isOpen={open}
   onClose={() => setOpen(false)}
-  initialMode="signin"            // or "signup"
-  showSocial
-  showEmailPassword
-  branding={{ appName: 'Acme', primaryColor: '#6d28d9' }}
-  onSuccess={() => setOpen(false)}
+  initialMode="signin"
+  branding={{ appName: 'Acme', primaryColor: '#6d28d9', logo: '/logo.svg' }}
 />
 ```
 
----
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `isOpen` | `boolean` | required | Visibility. |
+| `onClose` | `() => void` | required | Called when the dialog is dismissed. |
+| `initialMode` | `'signin' \| 'signup'` | `'signin'` | Initial mode; the user can toggle. |
+| `onSuccess` | `() => void` | none | Called after `login()` resolves (which normally navigates away). |
+| `onError` | `(error: string) => void` | none | Called if `login()` throws. |
+| `showSocial` | `boolean` | `true` | Google and GitHub buttons. |
+| `showEmailPassword` | `boolean` | `false` | Email/password form (see note above). |
+| `branding` | `BrandingConfig` | none | Logo, app name and accent color (default `#8b5cf6`). |
 
-### `<SignIn />` &nbsp;/&nbsp; `<SignUp />`
+The props type is exported as `AuthModalProps`.
 
-Drop-in buttons that kick off the sign-in / sign-up flow (modal or redirect). Three
-visual variants: `primary`, `secondary`, `outline`.
+### `ModernAuthForm`
 
-| `<SignIn />` | `<SignUp />` |
-|---|---|
-| ![SignIn](./screenshots/signin.png) | ![SignUp](./screenshots/signup.png) |
+A full-page style auth card with mode switching and a Terms/Privacy footer
+(links to `/terms` and `/privacy`; "Forgot?" links to `/forgot-password`).
 
 ```tsx
-import { SignIn, SignUp } from '@hyperyai/sdk';
+import { ModernAuthForm } from '@hyperyai/sdk';
 
-<SignIn buttonText="Try Sign In" variant="primary" />
-<SignUp buttonText="Try Sign Up" variant="secondary" />
+<ModernAuthForm mode="signin" branding={{ logo: '/logo.png', appName: 'My App' }} />
 ```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `mode` | `'signin' \| 'signup'` | `'signin'` | Initial mode. |
+| `allowModeSwitch` | `boolean` | `true` | Show the sign-in/sign-up toggle. |
+| `showCard` | `boolean` | `true` | Card wrapper. |
+| `showSocial` | `boolean` | `true` | Google and GitHub buttons. |
+| `showEmailPassword` | `boolean` | `true` | Email/password form (see note above). |
+| `onSuccess` | `() => void` | none | Called right after `login()` is started. |
+| `onError` | `(error: string) => void` | none | Called if starting login throws synchronously. |
+| `branding` | `BrandingConfig` | none | Logo, app name, accent color. |
+| `className` | `string` | `''` | Extra classes. |
+
+The props type is exported as `ModernAuthFormProps`.
 
 ---
 
-### `<UserButton />` &nbsp;/&nbsp; `<UserProfile />`
+## User components
 
-`UserButton` is an avatar + dropdown (profile, billing, sign out); `UserProfile` is an
-inline profile card. **Both render only when the user is authenticated** — signed out,
-they show a placeholder (as captured below).
+### `UserButton`
+
+Avatar button with a dropdown (optional name/email and "Sign out"). Renders
+nothing while loading or when signed out.
 
 | `<UserButton />` | `<UserProfile />` |
 |---|---|
 | ![UserButton](./screenshots/userbutton.png) | ![UserProfile](./screenshots/userprofile.png) |
 
 ```tsx
-import { UserButton, UserProfile } from '@hyperyai/sdk';
+import { UserButton } from '@hyperyai/sdk';
 
-<UserButton showUserInfo size="md" />   // size: 'sm' | 'md' | 'lg'
-<UserProfile />
+<UserButton
+  showUserInfo
+  size="md"
+  renderDropdown={(user, logout) => (
+    <button onClick={logout}>Sign out {user.name}</button>
+  )}
+/>
 ```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `showUserInfo` | `boolean` | `false` | Show name and email at the top of the default dropdown. |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Avatar size. |
+| `renderDropdown` | `(user: User, logout: () => void) => ReactNode` | none | Replace the dropdown contents. |
+| `className` | `string` | none | Appended to the wrapper. |
+
+### `UserProfile`
+
+Profile card with avatar, name, email and (extended) user id. Renders a
+skeleton while loading and nothing when signed out.
+
+```tsx
+import { UserProfile } from '@hyperyai/sdk';
+
+<UserProfile showExtended={false} />
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `showExtended` | `boolean` | `true` | Show user id and status row. |
+| `showLoading` | `boolean` | `true` | Show the skeleton while loading. |
+| `className` | `string` | none | Replaces the default card classes. |
+
+### `WorkspaceSwitcher`
+
+Dropdown listing every team and workspace the user belongs to (from
+[`useMemberships`](./HOOKS.md#usememberships)); selecting one calls
+[`setActiveWorkspace`](./HOOKS.md#setactiveworkspace). The personal team is
+labelled "Personal". Renders nothing when there are no memberships. Uses
+`lucide-react` icons.
+
+```tsx
+import { WorkspaceSwitcher } from '@hyperyai/sdk';
+
+<WorkspaceSwitcher gatewayUrl="https://hypery.ai" onSwitched={() => router.refresh()} />
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `onSwitched` | `(teamId: string, workspaceId: string) => void` | none | Called after a successful switch. |
+| `gatewayUrl` | `string` | `NEXT_PUBLIC_GATEWAY_URL` | Base URL for the switch request. The membership list itself always uses `NEXT_PUBLIC_GATEWAY_URL` (or a relative URL). |
+| `className` | `string` | `''` | Appended to the trigger button. |
+| `ariaLabel` | `string` | `'Switch workspace'` | Trigger `aria-label`. |
+
+Switch failures are logged to the console, not surfaced. The props type is
+exported as `WorkspaceSwitcherProps`.
 
 ---
 
-## Conditional rendering
+## Control components
 
-Render-gate components (no UI of their own — they show/hide children based on auth state).
+Render gates with no UI of their own.
 
 ```tsx
 import { SignedIn, SignedOut, Protect, RedirectToSignIn } from '@hyperyai/sdk';
 
-<SignedIn><Dashboard /></SignedIn>
+<SignedIn fallback={<Spinner />}><Dashboard /></SignedIn>
 <SignedOut><SignIn /></SignedOut>
 
-{/* Require a scope/permission, with a fallback */}
-<Protect scope="billing:read" fallback={<p>No access</p>}>
-  <BillingPanel />
+<Protect fallback={<p>Please sign in</p>}>
+  <Settings />
 </Protect>
 
-{/* Force a redirect to sign-in */}
 <SignedOut><RedirectToSignIn /></SignedOut>
 ```
 
----
+### `SignedIn`
 
-## Hooks
-
-```tsx
-import { useUser, useAuth, useError, useWallet, useMemberships } from '@hyperyai/sdk';
-
-const { user, isLoading } = useUser();
-const { isAuthenticated, login, logout, getAccessToken } = useAuth();
-
-// Structured gateway errors (spending limit / insufficient credits / payment method)
-const { error, setError, clearError, isBillingRestriction } = useError();
-
-// Wallet state + 1-click funding (see Billing components)
-const { wallet, addFunds, addPaymentMethod } = useWallet();
-
-// The user's teams + workspaces (for a workspace switcher)
-const { data } = useMemberships();
-```
-
----
-
-## Billing components
-
-These render on a consumer site when a request hits a billing limit. They are
-**mode-aware** (prepaid vs. metered) and read live wallet state from the gateway:
-
-- **`<RestrictionModal />`** — pops up on `INSUFFICIENT_CREDITS` / `PAYMENT_METHOD_REQUIRED` /
-  `SPENDING_LIMIT_EXCEEDED`. In prepaid mode it offers true 1-click **"Add $X"**; in
-  metered mode it offers **"Add a payment method"** (Stripe-hosted, no Elements).
-- **`<SpendingLimitAlert />`**, **`<InsufficientCreditsAlert />`** — inline alert variants.
-- **`useWallet()`** — `wallet.mode`, balance, `addFunds(usd)`, `addPaymentMethod()`.
-
-```tsx
-import { RestrictionModal, useError, useAuth } from '@hyperyai/sdk';
-
-const { error, clearError } = useError();
-const { getAccessToken } = useAuth();
-
-<RestrictionModal
-  error={error}
-  gatewayUrl={process.env.NEXT_PUBLIC_AUTH_URL!}
-  getAccessToken={getAccessToken}
-  onClose={clearError}
-  onRetry={retryRequest}
-/>
-```
-
-See the billing-mode design notes for how prepaid vs. metered is selected.
-
-### `<SubscribeButton />` &nbsp;/&nbsp; `useAppSubscription()`
-
-Subscribe the user to one of your app's plans (log in → subscribe with their
-card on Hypery → add a card only if needed). Asks for a confirming second click.
-
-```tsx
-import { SubscribeButton, useAppSubscription, planPriceCents } from '@hyperyai/sdk';
-
-const { plans, interval, pendingInterval, nextGrantAt, switchInterval } = useAppSubscription(appId);
-
-// Monthly (default) and annual
-<SubscribeButton planId={plan.id} priceCents={plan.priceCents} interval="month" />
-<SubscribeButton planId={plan.id} priceCents={planPriceCents(plan, 'year') ?? undefined} interval="year" />
-
-// Switch an existing subscription: month→year charges now, year→month applies at period end
-await switchInterval(undefined, 'year');
-```
-
-| Prop | Type | Notes |
+| Prop | Type | Description |
 | --- | --- | --- |
-| `planId` | `string` | Required. |
-| `interval` | `'month' \| 'year'` | Billing interval to subscribe on (default monthly); also shown next to the price. Annual subscribers still get grants monthly. |
-| `priceCents` | `number` | Display only. |
-| `label`, `requireConfirmation`, `onSuccess`, `onError`, `className`, `branding` | | Same as `<BuyButton />`. |
+| `children` | `ReactNode` | Rendered when authenticated. |
+| `fallback` | `ReactNode` | Rendered only while auth is loading. |
+
+### `SignedOut`
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `children` | `ReactNode` | Rendered when not authenticated. |
+| `fallback` | `ReactNode` | Rendered only while auth is loading. |
+
+### `RedirectToSignIn`
+
+No props. Once loading has finished and the user is not authenticated, calls
+`login()` (a redirect). Renders nothing.
+
+### `Protect`
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `children` | `ReactNode` | Rendered when authenticated. |
+| `fallback` | `ReactNode` | Rendered while loading, while logging out, and when signed out. |
+| `onUnauthenticated` | `() => void` | When signed out, called instead of rendering `fallback` or redirecting. |
+
+When signed out with neither `fallback` nor `onUnauthenticated`, `Protect` calls
+`login()`. It has no scope/permission prop.
 
 ---
 

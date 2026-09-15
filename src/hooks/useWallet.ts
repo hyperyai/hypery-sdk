@@ -15,8 +15,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
 
+/** How the team is billed for AI usage. */
 export type BillingMode = 'metered' | 'prepaid';
 
+/** A preset top-up tier. */
 export interface WalletTier {
   name: string;
   usdAmount: number;
@@ -25,6 +27,7 @@ export interface WalletTier {
   popular?: boolean;
 }
 
+/** Mode-aware wallet snapshot from `GET /api/wallet/state`. */
 export interface WalletState {
   mode: BillingMode;
   balance: {
@@ -40,6 +43,7 @@ export interface WalletState {
   settingsUrls: { billing: string; topup: string; addPaymentMethod: string };
 }
 
+/** Return value of {@link useWallet}. */
 export interface UseWalletReturn {
   wallet: WalletState | null;
   isLoading: boolean;
@@ -59,6 +63,15 @@ function resolveGatewayUrl(explicit?: string): string {
   );
 }
 
+/**
+ * The team's AI-credit wallet with 1-click funding.
+ *
+ * @param opts.gatewayUrl Base URL; defaults to `NEXT_PUBLIC_GATEWAY_URL`, else a relative URL.
+ * @example
+ * ```tsx
+ * const { wallet, addFunds, addPaymentMethod } = useWallet({ gatewayUrl: 'https://hypery.ai' });
+ * ```
+ */
 export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
   const { isAuthenticated, getAccessToken } = useHyperyAuth();
   const gatewayUrl = resolveGatewayUrl(opts.gatewayUrl);

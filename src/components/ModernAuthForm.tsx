@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
 
+/** Props of {@link ModernAuthForm}. */
 export interface ModernAuthFormProps {
   /** Auth mode: signin or signup */
   mode?: 'signin' | 'signup';

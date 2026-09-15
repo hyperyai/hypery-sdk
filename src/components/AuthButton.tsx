@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { AuthModal } from './AuthModal';
 
+/** Props of {@link AuthButton}. */
 export interface AuthButtonProps {
   /** Button text */
   children?: React.ReactNode;
