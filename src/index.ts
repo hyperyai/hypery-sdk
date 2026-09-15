@@ -28,6 +28,7 @@ export {
   useBuyerWallet,
   useMarketplace,
   useCheckout,
+  useAppSubscription,
 } from './hooks';
 export type {
   MembershipEntry,
@@ -51,6 +52,11 @@ export type {
   CheckoutStatus,
   CheckoutResult,
   UseCheckoutReturn,
+  AppPlan,
+  AppPlanGrant,
+  AppSubscription,
+  AppSubscriptionGrantBalance,
+  UseAppSubscriptionReturn,
 } from './hooks';
 
 // Auth Components
@@ -72,6 +78,10 @@ export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher';
 // "Buy with Hypery" marketplace checkout button.
 export { BuyButton } from './components/BuyButton';
 export type { BuyButtonProps } from './components/BuyButton';
+
+// Subscribe to an app's plan via Hypery.
+export { SubscribeButton } from './components/SubscribeButton';
+export type { SubscribeButtonProps } from './components/SubscribeButton';
 
 // Error Components
 export { RestrictionModal } from './components/RestrictionModal';

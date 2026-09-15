@@ -63,3 +63,13 @@ export type {
   UseCheckoutReturn,
 } from './useCheckout';
 
+
+// App subscription plans: the user's plan, remaining app credits, subscribe/cancel/resume.
+export { useAppSubscription } from './useAppSubscription';
+export type {
+  AppPlan,
+  AppPlanGrant,
+  AppSubscription,
+  AppSubscriptionGrantBalance,
+  UseAppSubscriptionReturn,
+} from './useAppSubscription';

@@ -287,6 +287,41 @@ Same as `useAuth()`, but with explicit naming.
 const auth = useHyperyAuth();
 ```
 
+### `useAppSubscription(appId)` and `<SubscribeButton>`
+
+Sell a recurring subscription for your app through Hypery. You create plans in
+the Hypery dashboard (your app → **Plans**). The price and the credit grants
+are set separately. Grants can only be spent inside your app and expire.
+Subscribing uses the card the user already has on Hypery, so they're only asked
+for one if they have none. Your OAuth client needs the `billing:charge` scope.
+
+```tsx
+import { useAppSubscription, SubscribeButton } from '@hyperyai/sdk';
+
+function Pricing({ appId }: { appId: string }) {
+  const { plans, isSubscribed, activeSubscription, remainingCreditUsd, cancel } = useAppSubscription(appId);
+
+  if (isSubscribed) {
+    return (
+      <div>
+        {activeSubscription?.plan?.name} · ${remainingCreditUsd.toFixed(2)} credit left
+        <button onClick={() => cancel()}>Cancel</button>
+      </div>
+    );
+  }
+
+  return plans.map((plan) => (
+    <SubscribeButton key={plan.id} planId={plan.id} priceCents={plan.priceCents} interval={plan.interval} />
+  ));
+}
+```
+
+Programmatic use goes through `useCheckout`:
+`checkout({ kind: 'subscription', planId })`. If the card needs 3-D Secure, the
+result is an error with `error.code === 'PAYMENT_INCOMPLETE'`, and
+`result.data.error.clientSecret` / `stripeAccount` can be confirmed with
+Stripe.js. See the [Subscription Plans API](https://hypery.ai/docs/management-apis/subscription-plans).
+
 ## Advanced Usage
 
 ### Custom storage
