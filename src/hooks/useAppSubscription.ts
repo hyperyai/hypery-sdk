@@ -18,6 +18,14 @@ import { useHyperyAuth } from '../lib/context';
 import { parseError } from '../lib/parse-error';
 import type { ParsedError } from '../types';
 import { useCheckout, type CheckoutResult } from './useCheckout';
+import { intervalSwitchPath, type PlanInterval } from '../lib/checkout';
+
+export type { PlanInterval } from '../lib/checkout';
+
+export interface AppPlanPrice {
+  interval: PlanInterval;
+  priceCents: number;
+}
 
 export interface AppPlanGrant {
   type: 'hypery' | 'stripe';
@@ -31,9 +39,12 @@ export interface AppPlan {
   appId: string;
   name: string;
   description: string | null;
+  /** Monthly price (legacy field; see `prices` for every offered interval). */
   priceCents: number;
   currency: string;
-  interval: 'month' | 'year';
+  interval: PlanInterval;
+  /** Active prices, one per offered interval. Absent on older gateways. */
+  prices?: AppPlanPrice[];
   grants: AppPlanGrant[];
 }
 
@@ -51,7 +62,24 @@ export interface AppSubscription {
   status: 'incomplete' | 'incomplete_expired' | 'trialing' | 'active' | 'past_due' | 'canceled' | 'unpaid' | 'paused';
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
+  /** How the subscription is billed. Annual subscribers still receive grants monthly. */
+  interval?: PlanInterval;
+  /** A scheduled interval switch (year→month applies at period end), or null. */
+  pendingInterval?: PlanInterval | null;
+  /** When the next monthly grant is issued, or null. */
+  nextGrantAt?: string | null;
   grants: AppSubscriptionGrantBalance[];
+}
+
+export interface SwitchIntervalResult {
+  success: boolean;
+  /** False when nothing changed (already on that interval, no pending switch). */
+  changed: boolean;
+  /** month→year is charged `now`; year→month takes effect at `period_end`. */
+  effective?: 'now' | 'period_end';
+  at?: string;
+  subscription?: AppSubscription;
+  error?: ParsedError;
 }
 
 export interface UseAppSubscriptionReturn {
@@ -63,15 +91,27 @@ export interface UseAppSubscriptionReturn {
   isSubscribed: boolean;
   /** Unexpired grant value remaining across the live subscription, in USD. */
   remainingCreditUsd: number;
+  /** Billing interval of the live subscription, if any. */
+  interval: PlanInterval | null;
+  /** Scheduled interval switch on the live subscription, if any. */
+  pendingInterval: PlanInterval | null;
+  /** When the live subscription's next monthly grant is issued. */
+  nextGrantAt: string | null;
   isLoading: boolean;
   error: ParsedError | null;
   refresh: () => Promise<void>;
   /** Subscribe to a plan (login / add-card handled). Refreshes on success. */
-  subscribe: (planId: string, opts?: { idempotencyKey?: string }) => Promise<CheckoutResult>;
+  subscribe: (planId: string, opts?: { idempotencyKey?: string; interval?: PlanInterval }) => Promise<CheckoutResult>;
   /** Stop renewal at period end (issued grants stay usable until they expire). */
   cancel: (subscriptionId?: string) => Promise<boolean>;
   /** Undo a pending cancellation. */
   resume: (subscriptionId?: string) => Promise<boolean>;
+  /**
+   * Switch billing interval. month→year charges now (may fail with PAYMENT_DECLINED);
+   * year→month applies at period end. Passing the current interval while a switch
+   * is pending cancels it. Omit `subscriptionId` (or pass undefined) for the live subscription.
+   */
+  switchInterval: (subscriptionId: string | undefined, interval: PlanInterval) => Promise<SwitchIntervalResult>;
 }
 
 const LIVE = new Set(['active', 'trialing', 'past_due']);
@@ -126,8 +166,13 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
   );
 
   const subscribe = useCallback(
-    async (planId: string, opts?: { idempotencyKey?: string }) => {
-      const result = await checkout({ kind: 'subscription', planId, idempotencyKey: opts?.idempotencyKey });
+    async (planId: string, opts?: { idempotencyKey?: string; interval?: PlanInterval }) => {
+      const result = await checkout({
+        kind: 'subscription',
+        planId,
+        idempotencyKey: opts?.idempotencyKey,
+        ...(opts?.interval ? { interval: opts.interval } : {}),
+      });
       if (result.status === 'success') await refresh();
       return result;
     },
@@ -152,17 +197,42 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
     [activeSubscription, authenticatedFetch, gatewayUrl, refresh],
   );
 
+  const switchInterval = useCallback(
+    async (subscriptionId: string | undefined, interval: PlanInterval): Promise<SwitchIntervalResult> => {
+      const id = subscriptionId ?? activeSubscription?.id;
+      if (!id) return { success: false, changed: false };
+      const res = await authenticatedFetch(`${gatewayUrl}${intervalSwitchPath(id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.success === false) {
+        const parsed = parseError({ ...body, status: res.status });
+        setError(parsed);
+        return { success: false, changed: false, error: parsed };
+      }
+      await refresh();
+      return { ...body, success: true, changed: !!body?.changed };
+    },
+    [activeSubscription, authenticatedFetch, gatewayUrl, refresh],
+  );
+
   return {
     plans,
     subscriptions,
     activeSubscription,
     isSubscribed: !!activeSubscription,
     remainingCreditUsd,
+    interval: activeSubscription?.interval ?? (activeSubscription ? 'month' : null),
+    pendingInterval: activeSubscription?.pendingInterval ?? null,
+    nextGrantAt: activeSubscription?.nextGrantAt ?? null,
     isLoading,
     error,
     refresh,
     subscribe,
     cancel: (id) => setRenewal('cancel', id),
     resume: (id) => setRenewal('resume', id),
+    switchInterval,
   };
 }

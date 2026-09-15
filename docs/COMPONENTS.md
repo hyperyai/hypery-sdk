@@ -207,6 +207,31 @@ const { getAccessToken } = useAuth();
 
 See the billing-mode design notes for how prepaid vs. metered is selected.
 
+### `<SubscribeButton />` &nbsp;/&nbsp; `useAppSubscription()`
+
+Subscribe the user to one of your app's plans (log in → subscribe with their
+card on Hypery → add a card only if needed). Asks for a confirming second click.
+
+```tsx
+import { SubscribeButton, useAppSubscription, planPriceCents } from '@hyperyai/sdk';
+
+const { plans, interval, pendingInterval, nextGrantAt, switchInterval } = useAppSubscription(appId);
+
+// Monthly (default) and annual
+<SubscribeButton planId={plan.id} priceCents={plan.priceCents} interval="month" />
+<SubscribeButton planId={plan.id} priceCents={planPriceCents(plan, 'year') ?? undefined} interval="year" />
+
+// Switch an existing subscription: month→year charges now, year→month applies at period end
+await switchInterval(undefined, 'year');
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `planId` | `string` | Required. |
+| `interval` | `'month' \| 'year'` | Billing interval to subscribe on (default monthly); also shown next to the price. Annual subscribers still get grants monthly. |
+| `priceCents` | `number` | Display only. |
+| `label`, `requireConfirmation`, `onSuccess`, `onError`, `className`, `branding` | | Same as `<BuyButton />`. |
+
 ---
 
 <sub>Screenshots generated from the `auth-demo` example in [hypery-examples](https://github.com/hyperyai/hypery-examples) (`/examples`). To regenerate, run the demo on
