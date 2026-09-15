@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { useHyperyAuth } from '../lib/context';
+import { useSignInAttempt } from '../lib/sign-in-attempt';
 
 /** Props of {@link AuthModal}. */
 export interface AuthModalProps {
@@ -17,13 +17,16 @@ export interface AuthModalProps {
   onClose: () => void;
   /** Initial mode. Defaults to `signin`. */
   initialMode?: 'signin' | 'signup';
-  /** Called after `login()` resolves. */
+  /** Called once the user is actually signed in (after a popup login completes). */
   onSuccess?: () => void;
-  /** Called if `login()` throws. */
+  /** Called if starting sign-in throws. */
   onError?: (error: string) => void;
   /** Show Google/GitHub buttons. Defaults to true. */
   showSocial?: boolean;
-  /** Show the email/password form (not yet functional). Defaults to false. */
+  /**
+   * Show a "Continue with email" button that opens Hypery's hosted login page
+   * (email/password is entered there, never in your app). Defaults to false.
+   */
   showEmailPassword?: boolean;
   /** Logo, app name and accent color. */
   branding?: {
@@ -34,7 +37,8 @@ export interface AuthModalProps {
 }
 
 /**
- * Controlled sign-in / sign-up dialog. The social buttons call `login()`.
+ * Controlled sign-in / sign-up dialog. Every button runs the hosted OAuth flow
+ * (Google/GitHub pass a provider hint that skips the hosted login page).
  *
  * @example
  * ```tsx
@@ -52,57 +56,9 @@ export function AuthModal({
   branding,
 }: AuthModalProps) {
 
-  const { login } = useHyperyAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSocialSignIn = async (provider: 'google' | 'github') => {
-    console.log('[AuthModal] Social button clicked:', provider);
-    setLoadingProvider(provider);
-    setError('');
-    try {
-      console.log('[AuthModal] Calling login()...');
-      await login();
-      console.log('[AuthModal] Login completed');
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (err) {
-      console.error('[AuthModal] Login failed:', err);
-      const errorMessage = err instanceof Error ? err.message : `${provider} sign in failed`;
-      setError(errorMessage);
-      if (onError) {
-        onError(errorMessage);
-      }
-      setLoadingProvider(null);
-    }
-  };
-
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
-
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      setIsLoading(false);
-      return;
-    }
-
-    if (mode === 'signup' && !name) {
-      setError('Please enter your name');
-      setIsLoading(false);
-      return;
-    }
-
-    setError('Direct email authentication coming soon. Please use social sign-in.');
-    setIsLoading(false);
-  };
+  const { start, pending: loadingProvider, error } = useSignInAttempt({ onSuccess, onError });
+  const handleSocialSignIn = (provider: 'google' | 'github') => void start(provider);
 
   const primaryColor = branding?.primaryColor || '#8b5cf6';
 
@@ -184,56 +140,17 @@ export function AuthModal({
             </div>
           )}
 
-          {/* Email/Password form */}
+          {/* Email: opens the hosted login page (credentials are never collected here) */}
           {showEmailPassword && (
-            <form onSubmit={handleEmailSubmit} className="space-y-4">
-              {mode === 'signup' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Full name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  placeholder="John Doe"
-                  disabled={isLoading}
-                />
-              </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  placeholder="you@example.com"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  placeholder="••••••••"
-                  disabled={isLoading}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-2 px-4 rounded-md font-medium text-white transition-all"
-                style={{ backgroundColor: primaryColor }}
-              >
-                {isLoading ? 'Processing...' : mode === 'signin' ? 'Sign in' : 'Create account'}
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={() => void start('email')}
+              disabled={!!loadingProvider}
+              className="w-full py-2 px-4 rounded-md font-medium text-white transition-all disabled:opacity-50"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {loadingProvider === 'email' ? 'Connecting...' : 'Continue with email'}
+            </button>
           )}
 
           {/* Toggle mode */}

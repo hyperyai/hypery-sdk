@@ -1,12 +1,13 @@
 /**
  * SignInForm Component
- * Embedded login form with email/password and social OAuth
- * Authenticates directly with the Hypery without extra redirects
+ * Embedded sign-in card: Google/GitHub buttons and an optional "Continue with
+ * email" button. All of them run Hypery's hosted OAuth flow (popup or redirect).
  */
 
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useSignInAttempt } from '../lib/sign-in-attempt';
 import { useHyperyAuth } from '../lib/context';
 
 export interface SignInFormProps {
@@ -22,9 +23,12 @@ export interface SignInFormProps {
   description?: string;
   /** Show social OAuth buttons (GitHub, Google) */
   showSocial?: boolean;
-  /** Show email/password form */
+  /**
+   * Show a "Continue with email" button that opens Hypery's hosted login page
+   * (email/password is entered there, never in your app). Defaults to false.
+   */
   showEmailPassword?: boolean;
-  /** Callback after successful sign in */
+  /** Called once the user is actually signed in (after a popup login completes). */
   onSuccess?: () => void;
   /** Callback on error */
   onError?: (error: string) => void;
@@ -51,63 +55,13 @@ export function SignInForm({
   title = 'Sign in to continue',
   description = 'Choose your preferred sign-in method',
   showSocial = true,
-  showEmailPassword = true,
+  showEmailPassword = false,
   onSuccess,
   onError,
 }: SignInFormProps) {
   const { login, signUp } = useHyperyAuth();
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  // Handle OAuth sign-in with social providers
-  // This directly initiates the OAuth flow with the gateway
-  const handleSocialSignIn = (provider: 'google' | 'github') => {
-    setLoadingProvider(provider);
-    setError('');
-    try {
-      // The login() function will redirect to the gateway's OAuth flow
-      // If the user is already authenticated with the provider, 
-      // they'll only need to authorize the OAuth app
-      login();
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : `${provider} sign in failed`;
-      setError(errorMessage);
-      if (onError) {
-        onError(errorMessage);
-      }
-      setLoadingProvider(null);
-    }
-  };
-
-  const handleEmailSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
-
-    // Validate
-    if (!email || !password) {
-      setError('Please enter both email and password');
-      setIsLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      setIsLoading(false);
-      return;
-    }
-
-    // For now, redirect to OAuth flow
-    // In the future, this could call a direct auth API
-    setError('Direct email login not yet supported. Please use the sign-in button.');
-    setIsLoading(false);
-  };
+  const { start, pending: loadingProvider, error } = useSignInAttempt({ onSuccess, onError });
+  const handleSocialSignIn = (provider: 'google' | 'github') => void start(provider);
 
   const containerClasses = showCard
     ? 'bg-white rounded-lg shadow-md p-8 max-w-md mx-auto'
@@ -188,47 +142,18 @@ export function SignInForm({
         </div>
       )}
 
-      {/* Email/Password Form */}
+      {/* Email: opens the hosted login page (credentials are never collected here) */}
       {showEmailPassword && (
-        <form onSubmit={handleEmailSignIn} className="space-y-4 mb-6">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading || !!loadingProvider}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-[15px]"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading || !!loadingProvider}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-[15px]"
-              placeholder="Enter your password"
-            />
-          </div>
-
+        <div className="mb-6">
           <button
-            type="submit"
-            disabled={isLoading || !!loadingProvider}
+            type="button"
+            onClick={() => void start('email')}
+            disabled={!!loadingProvider}
             className="w-full bg-blue-600 text-white py-2.5 px-4 rounded font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[15px]"
           >
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {loadingProvider === 'email' ? 'Connecting...' : 'Continue with email'}
           </button>
-        </form>
+        </div>
       )}
 
       <div className="text-center">
