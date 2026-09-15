@@ -73,6 +73,8 @@ export interface AppSubscription {
   pendingInterval?: PlanInterval | null;
   /** When the next monthly grant is issued, or null. */
   nextGrantAt?: string | null;
+  /** Team that owns the subscription (null when the gateway can't resolve it; absent on older gateways). */
+  team?: { id: string; name: string; slug: string } | null;
   grants: AppSubscriptionGrantBalance[];
 }
 
@@ -108,7 +110,7 @@ export interface UseAppSubscriptionReturn {
   error: ParsedError | null;
   refresh: () => Promise<void>;
   /** Subscribe on Hypery's hosted page (login handled; `interval` is the preselection). Refreshes on success. */
-  subscribe: (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval }) => Promise<CheckoutResult>;
+  subscribe: (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval; teamId?: string }) => Promise<CheckoutResult>;
   /** Stop renewal at period end (issued grants stay usable until they expire). */
   cancel: (subscriptionId?: string) => Promise<boolean>;
   /** Undo a pending cancellation. */
@@ -123,6 +125,16 @@ export interface UseAppSubscriptionReturn {
 
 const LIVE = new Set(['active', 'trialing', 'past_due']);
 
+/** Options for `useAppSubscription`. */
+export interface UseAppSubscriptionOptions {
+  /**
+   * Scope to one Hypery team (24-hex id), e.g. your team switcher's selection:
+   * subscriptions are fetched with `&teamId=` (so `activeSubscription` is that
+   * team's) and `subscribe()` locks the hosted page to it.
+   */
+  teamId?: string;
+}
+
 /**
  * The signed-in user's subscription to your app's plans: plans, live
  * subscription, remaining grant credit, and subscribe / cancel / resume /
@@ -135,7 +147,8 @@ const LIVE = new Set(['active', 'trialing', 'past_due']);
  * ```
  * @see docs/CHECKOUT.md
  */
-export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
+export function useAppSubscription(appId: string, options: UseAppSubscriptionOptions = {}): UseAppSubscriptionReturn {
+  const { teamId } = options;
   const { authenticatedFetch, gatewayUrl, isAuthenticated, isLoading: authLoading } = useHyperyAuth();
   const { checkout, lastResult } = useCheckout();
   const [plans, setPlans] = useState<AppPlan[]>([]);
@@ -154,7 +167,9 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
       const q = encodeURIComponent(appId);
       const [plansRes, subsRes] = await Promise.all([
         authenticatedFetch(`${gatewayUrl}/api/marketplace/plans?appId=${q}`),
-        authenticatedFetch(`${gatewayUrl}/api/marketplace/subscriptions?appId=${q}`),
+        authenticatedFetch(
+          `${gatewayUrl}/api/marketplace/subscriptions?appId=${q}${teamId ? `&teamId=${encodeURIComponent(teamId)}` : ''}`,
+        ),
       ]);
       const [plansBody, subsBody] = await Promise.all([
         plansRes.json().catch(() => ({})),
@@ -169,7 +184,7 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [appId, authenticatedFetch, gatewayUrl, isAuthenticated]);
+  }, [appId, teamId, authenticatedFetch, gatewayUrl, isAuthenticated]);
 
   useEffect(() => {
     if (!authLoading) void refresh();
@@ -190,16 +205,17 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
   );
 
   const subscribe = useCallback(
-    async (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval }) => {
+    async (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval; teamId?: string }) => {
       const result = await checkout({
         kind: 'subscription',
         planId,
         ...(opts?.interval ? { interval: opts.interval } : {}),
+        ...((opts?.teamId ?? teamId) ? { teamId: opts?.teamId ?? teamId } : {}),
       });
       if (result.status === 'success') await refresh();
       return result;
     },
-    [checkout, refresh],
+    [checkout, refresh, teamId],
   );
 
   const setRenewal = useCallback(

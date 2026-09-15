@@ -24,6 +24,8 @@ export interface SubscribeButtonProps {
    * monthly. Pass `"year"` for annual billing — the plan must offer a yearly price.
    */
   interval?: "month" | "year";
+  /** Lock the hosted subscribe page to this Hypery team (24-hex id). Omit to let the user pick. */
+  teamId?: string;
   /** Button label. Defaults to "Subscribe" (+ price when given). */
   label?: React.ReactNode;
   /** Require a confirming second click before subscribing. Defaults to true. */
@@ -53,6 +55,7 @@ export function SubscribeButton({
   planId,
   priceCents,
   interval,
+  teamId,
   label,
   requireConfirmation = true,
   onSuccess,
@@ -65,7 +68,7 @@ export function SubscribeButton({
 
   const run = async () => {
     setArmed(false);
-    const result = await checkout({ kind: "subscription", planId, ...(interval ? { interval } : {}) });
+    const result = await checkout({ kind: "subscription", planId, ...(interval ? { interval } : {}), ...(teamId ? { teamId } : {}) });
     if (result.status === "success") {
       onSuccess?.(result.data);
       return;

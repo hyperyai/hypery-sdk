@@ -92,3 +92,18 @@ describe('subscribe outcome', () => {
     expect(subscribeOutcome({ status: 'completed', state: 'other', team: null, subscription: null }, 's')).toEqual({ status: 'error', reason: 'STATE_MISMATCH' });
   });
 });
+
+describe('subscribeSessionBody teamId', () => {
+  const opts = { state: 'abcdefgh1', mode: 'redirect' as const, returnUrl: 'https://app.example.com/pricing' };
+  it('omits teamId when not given', () => {
+    expect(subscribeSessionBody({ planId: 'p1' }, opts)).not.toHaveProperty('teamId');
+  });
+  it('includes a valid teamId', () => {
+    expect(subscribeSessionBody({ planId: 'p1', teamId: '0123456789abcdefABCDEF01' }, opts)).toMatchObject({ planId: 'p1', teamId: '0123456789abcdefABCDEF01' });
+  });
+  it('throws a clear error on an invalid teamId', () => {
+    for (const bad of ['', 'team_1', '0123456789abcdef0123456', '0123456789abcdef012345678', 'zz23456789abcdef01234567']) {
+      expect(() => subscribeSessionBody({ planId: 'p1', teamId: bad }, opts)).toThrow(/Invalid teamId/);
+    }
+  });
+});

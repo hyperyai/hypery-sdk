@@ -42,13 +42,17 @@ Requires a Hypery gateway with hosted subscribe sessions (hyperyai/hypery#193).
 After making sure the user is logged in, `kind: 'subscription'`:
 
 1. Creates a session: `POST /api/marketplace/subscribe-sessions` with
-   `{ planId, interval?, state }` and a fresh random `state`
+   `{ planId, interval?, teamId?, state }` and a fresh random `state`
    (`crypto.getRandomValues`). Popup mode sends `returnOrigin` = the origin of
    `config.redirectUri`; redirect mode sends `returnUrl` = the current page URL.
    Both must match a redirect URI registered on your OAuth app.
 2. Opens the returned `url`. On that page the user picks the **team** that owns
    the subscription, the card and the interval (your `interval` is only the
-   preselection).
+   preselection). Pass `teamId` (24-hex Hypery team id, e.g. your team
+   switcher's selection) to lock the page to that team: the user can't confirm
+   another team (the gateway returns 403 `TEAM_LOCKED`), and a user who isn't a
+   member sees a wrong-account notice. An invalid `teamId` throws before any
+   request is made (requires hyperyai/hypery#194).
    - popup (`hypery-subscribe`, 480x760): when the user is already logged in the
      window is opened synchronously in the click (showing "Loading…") and pointed
      at the session once it's created, so popup blockers allow it; it is closed if
@@ -121,6 +125,7 @@ const yearly = planPriceCents(plan, 'year');
 | `planId` | `string` | required | Plan id from `useAppSubscription().plans`. |
 | `priceCents` | `number` | none | Display only; Hypery charges the plan's real price. |
 | `interval` | `'month' \| 'year'` | not sent (server defaults to monthly) | Interval preselected on the hosted page (the user can change it); also shown as `/mo` or `/yr`. |
+| `teamId` | `string` | not sent (user picks) | Lock the hosted page to this Hypery team (24-hex id). |
 | `label` | `ReactNode` | `Subscribe` + price | Idle label. |
 | `requireConfirmation` | `boolean` | `true` | Two-click confirm. |
 | `onSuccess` | `(data: any) => void` | none | `{ subscription, team }` from the session result. |
@@ -153,7 +158,7 @@ if (r.status === 'success') refreshBalance();
 | --- | --- | --- |
 | `'purchase'` | `appId: string`, `amountCents: number`, `description?: string`, `idempotencyKey?: string` | `POST /api/marketplace/checkout` |
 | `'topup'` | `usdAmount: number` | `POST /api/wallet/topup` |
-| `'subscription'` | `planId: string`, `interval?: PlanInterval` (preselection), `idempotencyKey?` (deprecated, ignored) | `POST /api/marketplace/subscribe-sessions` + hosted page |
+| `'subscription'` | `planId: string`, `interval?: PlanInterval` (preselection), `teamId?: string` (lock to a team, 24-hex), `idempotencyKey?` (deprecated, ignored) | `POST /api/marketplace/subscribe-sessions` + hosted page |
 
 | Returns | Type | Description |
 | --- | --- | --- |
@@ -243,11 +248,12 @@ function Pricing({ appId }: { appId: string }) {
 | Param | Type | Description |
 | --- | --- | --- |
 | `appId` | `string` | Your app id. |
+| `options` | `UseAppSubscriptionOptions` | `{ teamId?: string }`. With `teamId`, subscriptions are fetched with `&teamId=` (so `activeSubscription` is that team's) and `subscribe()` locks the hosted page to that team (`opts.teamId` overrides). |
 
 | Returns | Type | Description |
 | --- | --- | --- |
 | `plans` | `AppPlan[]` | Active plans. |
-| `subscriptions` | `AppSubscription[]` | The app's subscriptions across all of the user's teams (subscriptions are team-owned). |
+| `subscriptions` | `AppSubscription[]` | The app's subscriptions across all of the user's teams (subscriptions are team-owned; each carries `team: { id, name, slug } \| null`), or only `options.teamId`'s. |
 | `activeSubscription` | `AppSubscription \| null` | First with status `active`, `trialing` or `past_due`. |
 | `isSubscribed` | `boolean` | `!!activeSubscription`. |
 | `remainingCreditUsd` | `number` | Sum of `remainingUsd` over the live subscription's grants. |
