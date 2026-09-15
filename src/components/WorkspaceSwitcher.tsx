@@ -21,6 +21,7 @@
 import React, { useCallback, useState } from 'react';
 import { ChevronsUpDown, Check, Building2, User as UserIcon } from 'lucide-react';
 import { useHyperyAuth } from '../lib/context';
+import { resolveGatewayUrl } from '../lib/gateway';
 import {
   useMemberships,
   setActiveWorkspace,
@@ -32,7 +33,7 @@ import {
 export interface WorkspaceSwitcherProps {
   /** Called after a successful switch — typically `router.refresh()`. */
   onSwitched?: (teamId: string, workspaceId: string) => void;
-  /** Override the Hypery base URL (defaults to NEXT_PUBLIC_GATEWAY_URL). */
+  /** Override the Hypery base URL (defaults to the provider's gatewayUrl, then NEXT_PUBLIC_GATEWAY_URL). */
   gatewayUrl?: string;
   /** Extra classes appended to the trigger button. */
   className?: string;
@@ -54,8 +55,9 @@ export function WorkspaceSwitcher({
   className = '',
   ariaLabel = 'Switch workspace',
 }: WorkspaceSwitcherProps) {
-  const { getAccessToken } = useHyperyAuth();
-  const { data, isLoading, reload } = useMemberships();
+  const { getAccessToken, gatewayUrl: providerGatewayUrl } = useHyperyAuth();
+  const resolvedGatewayUrl = resolveGatewayUrl(gatewayUrl, providerGatewayUrl);
+  const { data, isLoading, reload } = useMemberships({ gatewayUrl: resolvedGatewayUrl });
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
 
@@ -80,7 +82,7 @@ export function WorkspaceSwitcher({
           teamId,
           workspaceId,
           getAccessToken,
-          gatewayUrl,
+          gatewayUrl: resolvedGatewayUrl,
         });
         await reload();
         setOpen(false);
@@ -91,7 +93,7 @@ export function WorkspaceSwitcher({
         setSwitching(null);
       }
     },
-    [getAccessToken, gatewayUrl, onSwitched, reload],
+    [getAccessToken, resolvedGatewayUrl, onSwitched, reload],
   );
 
   if (isLoading && !data) {

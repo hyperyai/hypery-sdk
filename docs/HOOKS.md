@@ -60,9 +60,10 @@ const { user, isLoading } = useUser();
 ## `useMemberships`
 
 Every team and workspace the signed-in user belongs to
-(`GET {base}/api/auth/list_memberships`). `base` is
-`process.env.NEXT_PUBLIC_GATEWAY_URL`, or `''` (a relative request) when unset.
-Each workspace gets `isActive` set from `activeWorkspaceId`.
+(`GET {base}/api/auth/list_memberships`). `base` is `opts.gatewayUrl`, else the
+provider's `config.gatewayUrl`, else `process.env.NEXT_PUBLIC_GATEWAY_URL`, else
+`''` (a relative request). Concurrent identical requests (same base + token) share
+one fetch. Each workspace gets `isActive` set from `activeWorkspaceId`.
 
 ```tsx
 import { useMemberships } from '@hyperyai/sdk';
@@ -70,6 +71,10 @@ import { useMemberships } from '@hyperyai/sdk';
 const { data, isLoading, error, reload } = useMemberships();
 data?.memberships.map((m) => m.workspaces.map((w) => w.name));
 ```
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| `opts.gatewayUrl` | `string` | provider `gatewayUrl` | Base URL override. |
 
 | Returns | Type | Description |
 | --- | --- | --- |
@@ -85,9 +90,10 @@ Types: `MembershipEntry` `{ team: MembershipTeam; workspaces: MembershipWorkspac
 
 ## `useActiveWorkspace`
 
-Resolves the active team + workspace from `useMemberships` (it calls that hook
-internally, so it makes its own request). Falls back to the personal team's
-default workspace when there is no active pointer.
+Resolves the active team + workspace from `useMemberships` (same gateway
+resolution and `opts.gatewayUrl` param; concurrent requests with other
+`useMemberships` users are shared). Falls back to the personal team's default
+workspace when there is no active pointer.
 
 ```tsx
 import { useActiveWorkspace } from '@hyperyai/sdk';
@@ -119,7 +125,7 @@ await setActiveWorkspace({ teamId, workspaceId, getAccessToken, gatewayUrl });
 | `opts.teamId` | `string` | required | Sent as `activeOrganizationId`. |
 | `opts.workspaceId` | `string` | required | Sent as `activeWorkspaceId`. |
 | `opts.getAccessToken` | `() => Promise<string \| null>` | required | Usually from `useAuth()`. |
-| `opts.gatewayUrl` | `string` | `NEXT_PUBLIC_GATEWAY_URL` or `''` | Base URL. |
+| `opts.gatewayUrl` | `string` | `NEXT_PUBLIC_GATEWAY_URL` or `''` | Base URL. A plain function can't read the provider, so pass `useAuth().gatewayUrl` (as above). |
 
 Returns `Promise<void>`.
 
@@ -142,7 +148,7 @@ if (wallet?.mode === 'prepaid' && wallet.paymentMethod.exists) {
 
 | Param | Type | Default | Description |
 | --- | --- | --- | --- |
-| `opts.gatewayUrl` | `string` | `NEXT_PUBLIC_GATEWAY_URL` or `''` | Base URL. |
+| `opts.gatewayUrl` | `string` | provider `gatewayUrl` | Base URL override; falls back to the provider's `config.gatewayUrl`, then `NEXT_PUBLIC_GATEWAY_URL`, then `''`. |
 
 | Returns | Type | Description |
 | --- | --- | --- |
@@ -153,7 +159,7 @@ if (wallet?.mode === 'prepaid' && wallet.paymentMethod.exists) {
 | `addFunds` | `(usd: number) => Promise<void>` | Charges the saved card (`POST /api/wallet/topup`), then reloads. Throws on failure. |
 | `addPaymentMethod` | `() => Promise<boolean>` | Opens Stripe-hosted card setup in a popup (`POST /api/payments/stripe/checkout-setup`). Resolves `true` when the popup reports `added`, `false` if it is closed; reloads either way. Throws if the setup session cannot be created. |
 
-`WalletState`: `mode: BillingMode` (`'metered' | 'prepaid'`),
+`WalletState`: `mode: BillingMode` (`'metered' | 'prepaid' | 'vag_passthrough'`),
 `balance { current, reserved, monthlySpent, monthlyLimit }`,
 `paymentMethod { exists, last4?, brand? }`,
 `autoTopUp { enabled, threshold?, amount? }`,

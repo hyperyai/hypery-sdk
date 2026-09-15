@@ -22,6 +22,12 @@ export interface PopupAuthResult {
   cancelled: boolean;
 }
 
+/** Options for `login()` / `loginPopup()`. */
+export interface LoginOptions {
+  /** Skip Hypery's hosted login page and go straight to this identity provider. */
+  provider?: 'google' | 'github';
+}
+
 /**
  * Custom branding shared by AuthButton / AuthModal / ModernAuthForm.
  */
@@ -103,14 +109,14 @@ export interface AuthState {
 /** Value returned by `useAuth()` / `useHyperyAuth()`. */
 export interface AuthContextValue extends AuthState {
   /** Redirect to the Hypery authorize page (PKCE). */
-  login: () => Promise<void>;
+  login: (options?: LoginOptions) => Promise<void>;
   /**
    * Log in via a centered popup (no full-page redirect). Resolves once the popup
    * completes: `ok` on success, `blocked` if the browser blocked the popup (fall
    * back to `login()`), `cancelled` if the user closed it. Used by the seamless
    * auth+charge flow (see `useCheckout`).
    */
-  loginPopup: () => Promise<PopupAuthResult>;
+  loginPopup: (options?: LoginOptions) => Promise<PopupAuthResult>;
   /** The interaction mode resolved for this environment (popup vs redirect). */
   interactionMode: ResolvedMode;
   /** The redirectUri this provider was configured with. */

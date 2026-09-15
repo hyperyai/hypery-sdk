@@ -8,7 +8,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useHyperyAuth } from '../lib/context';
+import { useSignInAttempt } from '../lib/sign-in-attempt';
 
 /** Props of {@link ModernAuthForm}. */
 export interface ModernAuthFormProps {
@@ -22,9 +22,12 @@ export interface ModernAuthFormProps {
   showCard?: boolean;
   /** Show social OAuth buttons */
   showSocial?: boolean;
-  /** Show email/password form */
+  /**
+   * Show a "Continue with email" button that opens Hypery's hosted login page
+   * (email/password is entered there, never in your app). Defaults to false.
+   */
   showEmailPassword?: boolean;
-  /** Callback after successful auth */
+  /** Called once the user is actually signed in (after a popup login completes). */
   onSuccess?: () => void;
   /** Callback on error */
   onError?: (error: string) => void;
@@ -62,58 +65,14 @@ export function ModernAuthForm({
   className = '',
   showCard = true,
   showSocial = true,
-  showEmailPassword = true,
+  showEmailPassword = false,
   onSuccess,
   onError,
   branding,
 }: ModernAuthFormProps) {
-  const { login } = useHyperyAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSocialSignIn = (provider: 'google' | 'github') => {
-    setLoadingProvider(provider);
-    setError('');
-    try {
-      login();
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : `${provider} sign in failed`;
-      setError(errorMessage);
-      if (onError) {
-        onError(errorMessage);
-      }
-      setLoadingProvider(null);
-    }
-  };
-
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
-
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      setIsLoading(false);
-      return;
-    }
-
-    if (mode === 'signup' && !name) {
-      setError('Please enter your name');
-      setIsLoading(false);
-      return;
-    }
-
-    setError('Direct email authentication coming soon. Please use social sign-in.');
-    setIsLoading(false);
-  };
+  const { start, pending: loadingProvider, error } = useSignInAttempt({ onSuccess, onError });
+  const handleSocialSignIn = (provider: 'google' | 'github') => void start(provider);
 
   const primaryColor = branding?.primaryColor || '#8b5cf6';
 
@@ -197,85 +156,24 @@ export function ModernAuthForm({
         </div>
       )}
 
-      {/* Email/Password form */}
+      {/* Email: opens the hosted login page (credentials are never collected here) */}
       {showEmailPassword && (
-        <form onSubmit={handleEmailSubmit} className="space-y-5">
-          {mode === 'signup' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Full name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-offset-2 focus:outline-none transition-all"
-                style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
-                placeholder="John Doe"
-                disabled={isLoading}
-              />
-            </div>
+        <button
+          type="button"
+          onClick={() => void start('email')}
+          disabled={!!loadingProvider}
+          className="w-full py-3.5 px-4 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: primaryColor }}
+        >
+          {loadingProvider === 'email' ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Connecting...
+            </span>
+          ) : (
+            'Continue with email'
           )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Email address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-offset-2 focus:outline-none transition-all"
-              style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
-              placeholder="you@example.com"
-              disabled={isLoading}
-              autoComplete="email"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              {mode === 'signin' && (
-                <a 
-                  href="/forgot-password" 
-                  className="text-sm font-medium hover:underline"
-                  style={{ color: primaryColor }}
-                >
-                  Forgot?
-                </a>
-              )}
-            </div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-offset-2 focus:outline-none transition-all"
-              style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
-              placeholder="••••••••"
-              disabled={isLoading}
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-3.5 px-4 rounded-xl font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {isLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                {mode === 'signin' ? 'Signing in...' : 'Creating account...'}
-              </span>
-            ) : (
-              mode === 'signin' ? 'Sign in' : 'Create account'
-            )}
-          </button>
-        </form>
+        </button>
       )}
 
       {/* Mode switcher */}

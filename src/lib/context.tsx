@@ -18,6 +18,7 @@ import type {
   HyperyAuthConfig,
   AuthContextValue,
   ParsedError,
+  LoginOptions,
   PopupAuthResult,
   ResolvedMode,
   User,
@@ -27,6 +28,8 @@ import {
   exchangeCodeForToken,
   refreshAccessToken,
   getUserInfo,
+  clearOAuthTransaction,
+  verifyOAuthState,
 } from './oauth';
 import { parseError } from './parse-error';
 import { openPopup, resolveInteractionMode } from './popup';
@@ -34,6 +37,15 @@ import { TokenStorage } from './storage';
 
 /** window.open target name; also read back in the callback to detect popup context. */
 const AUTH_POPUP_NAME = 'hypery-sdk-popup';
+
+/**
+ * Read a provider hint from `login()`'s argument. Ignores anything else, so
+ * `<button onClick={login}>` (which passes a click event) keeps working.
+ */
+function providerHint(options?: LoginOptions): LoginOptions['provider'] {
+  const p = options && typeof options === 'object' ? (options as LoginOptions).provider : undefined;
+  return p === 'google' || p === 'github' ? p : undefined;
+}
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -198,7 +210,7 @@ export function HyperyProvider({
   /**
    * Initiate OAuth login flow
    */
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: LoginOptions) => {
     try {
       // Check if user just logged out (force account selection)
       const justLoggedOut = typeof window !== 'undefined' && 
@@ -212,6 +224,7 @@ export function HyperyProvider({
         storage: config.storage || 'localStorage',
         // Force account selection after logout to prevent auto-login
         prompt: justLoggedOut ? 'select_account' : undefined,
+        provider: providerHint(options),
       });
 
       // Clear the flag
@@ -254,7 +267,7 @@ export function HyperyProvider({
    * and we exchange it with the verifier stored in THIS window. Same-origin
    * redirectUri required — the code is relayed via postMessage to the opener.
    */
-  const loginPopup = useCallback(async (): Promise<PopupAuthResult> => {
+  const loginPopup = useCallback(async (options?: LoginOptions): Promise<PopupAuthResult> => {
     try {
       const authUrl = await getAuthorizationUrl({
         clientId: config.clientId,
@@ -262,9 +275,10 @@ export function HyperyProvider({
         gatewayUrl: config.gatewayUrl,
         scopes,
         storage: config.storage || 'localStorage',
+        provider: providerHint(options),
       });
       const expectedOrigin = new URL(config.redirectUri).origin;
-      const result = await openPopup<{ code: string }>({
+      const result = await openPopup<{ code: string; state?: string | null }>({
         url: authUrl,
         name: AUTH_POPUP_NAME,
         expectedOrigin,
@@ -275,11 +289,14 @@ export function HyperyProvider({
         return { ok: false, blocked: false, cancelled: true };
       }
 
+      // Verifies the relayed `state` against the one stored in THIS window
+      // before exchanging; a mismatch throws and no code is exchanged.
       const tokens = await exchangeCodeForToken(result.data.code, {
         clientId: config.clientId,
         redirectUri: config.redirectUri,
         gatewayUrl: config.gatewayUrl,
         storage: config.storage || 'localStorage',
+        state: result.data.state ?? null,
       });
       storage.saveTokens(tokens);
       const userInfo = await getUserInfo(tokens.accessToken, config.gatewayUrl);
@@ -297,52 +314,41 @@ export function HyperyProvider({
    * Logout and clear session
    */
   const logout = useCallback(async () => {
-    console.log('🚪 [AUTH] Logout initiated');
-    
     // Set logging out flag to prevent Protect components from triggering login
     setIsLoggingOut(true);
-    
+
     // Get the current access token before clearing
     const tokens = storage.getTokens();
-    console.log('🔑 [AUTH] Found tokens:', tokens ? 'yes' : 'no');
-    
+
     // Revoke the OAuth token on the server
     if (tokens?.accessToken) {
       try {
-        console.log('📡 [AUTH] Calling revoke endpoint:', `${config.gatewayUrl}/api/oauth/revoke`);
-        const response = await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
+        await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: tokens.accessToken }),
         });
-        console.log('✅ [AUTH] OAuth token revoked on server, status:', response.status);
       } catch (err) {
-        console.error('❌ [AUTH] Failed to revoke token on server:', err);
+        console.error('Failed to revoke token on server:', err);
         // Continue with logout even if revocation fails
       }
-    } else {
-      console.log('⚠️ [AUTH] No access token found to revoke');
     }
-    
+
     // Clear local storage
-    console.log('🧹 [AUTH] Clearing local storage');
     storage.clear();
     setUser(null);
     setError(null);
-    
-    // Also clear OAuth verifier if it exists
+
     if (typeof window !== 'undefined') {
-      const storageInstance = config.storage === 'sessionStorage' ? sessionStorage : localStorage;
-      storageInstance.removeItem('hypery_oauth_verifier');
-      
+      // Also clear any pending OAuth login transaction (verifier + state)
+      clearOAuthTransaction(config.storage || 'localStorage');
+
       // Set flag to force account selection on next login
       // This prevents auto-login after logout
       localStorage.setItem('hypery_force_reauth', 'true');
-      console.log('✅ [AUTH] Set force reauth flag');
-      
+
       // Redirect to local landing page
       // Note: This only logs out of THIS app, not the OAuth provider or other apps
-      console.log('🔄 [AUTH] Redirecting to /');
       window.location.replace('/');
     }
   }, [config.storage, config.gatewayUrl, storage]);
@@ -363,13 +369,17 @@ export function HyperyProvider({
 
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
+      const returnedState = params.get('state');
 
       // Popup auth: this callback page is running inside the auth popup we opened.
       // Don't exchange here — relay the code to the opener (which holds the PKCE
       // verifier) and close. The opener validates event.origin (see loginPopup).
       if (code && window.opener && !window.opener.closed && window.name === AUTH_POPUP_NAME) {
         try {
-          window.opener.postMessage({ type: 'hypery:auth', code }, window.location.origin);
+          window.opener.postMessage(
+            { type: 'hypery:auth', code, state: returnedState },
+            window.location.origin,
+          );
         } catch (err) {
           console.error('Failed to relay auth code to opener:', err);
         }
@@ -381,12 +391,17 @@ export function HyperyProvider({
         try {
           setIsLoading(true);
 
+          // Reject a callback whose `state` doesn't match this login attempt
+          // BEFORE exchanging the code (login CSRF / injected code).
+          verifyOAuthState(config.storage || 'localStorage', returnedState);
+
           // Exchange code for tokens
           const tokens = await exchangeCodeForToken(code, {
             clientId: config.clientId,
             redirectUri: config.redirectUri,
             gatewayUrl: config.gatewayUrl,
             storage: config.storage || 'localStorage',
+            state: returnedState,
           });
 
           storage.saveTokens(tokens);

@@ -35,11 +35,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 What the provider does on mount:
 
-- If the URL has a `?code=` query parameter, it exchanges the code for tokens
-  (PKCE), stores them, fetches the user (`GET {gatewayUrl}/api/user/me`) and
-  strips the query string from the URL.
+- If the URL has a `?code=` query parameter, it first checks the returned
+  `state` against the one stored when login started — on a mismatch it sets
+  `error` ("OAuth state mismatch…") and does not exchange the code. Otherwise
+  it exchanges the code for tokens (PKCE), stores them, fetches the user
+  (`GET {gatewayUrl}/api/user/me`) and strips the query string from the URL.
 - If that page is running inside the SDK's own login popup, it instead posts
-  the code back to the opener window and closes itself.
+  the code and `state` back to the opener window and closes itself; the opener
+  verifies `state` the same way before exchanging.
 - Otherwise it restores the existing session from storage, refreshing the
   access token if the stored expiry has passed (with a 60 second margin).
 
@@ -54,7 +57,7 @@ The callback/session effect depends on the `config` identity.
 | `redirectUri` | `string` | required | OAuth redirect URI registered for the client. Must be same-origin with your app for popup mode. |
 | `gatewayUrl` | `string` | required | Hypery base URL, e.g. `https://hypery.ai`. |
 | `scopes` | `string[]` | `['read', 'write', 'ai:chat', 'ai:completions', 'ai:models', 'ai:images', 'billing:read']` | OAuth scopes requested at login. Add `billing:charge` for checkout / subscriptions. |
-| `storage` | `'localStorage' \| 'sessionStorage' \| 'memory'` | `'localStorage'` | Where tokens, the cached user and the PKCE verifier live. `memory` does not persist the PKCE verifier across the login redirect, so the redirect login cannot complete with it. |
+| `storage` | `'localStorage' \| 'sessionStorage' \| 'memory'` | `'localStorage'` | Where tokens and the cached user live. The one-time login transaction (PKCE verifier + OAuth `state`) uses the same store, except in `memory` mode: tokens stay in memory, but the transaction goes to `sessionStorage` (falling back to in-memory when unavailable) so the redirect login can complete; it is removed after the code exchange. |
 | `interactionMode` | `InteractionMode` | `'auto'` | How interactive auth / card-entry steps are shown in the checkout flow. See below. |
 | `onUnauthorized` | `() => void` | none | Called when an `authenticatedFetch` request is still `401` after one forced token refresh. `authRequired` is set on the context either way. |
 | `onRestricted` | `(error: ParsedError) => void` | none | Called when an `authenticatedFetch` response is `402` or `429` with a JSON body. `restriction` is set on the context either way. |
@@ -93,8 +96,8 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 | `isLoading` | `boolean` | True while the session / callback is being resolved. |
 | `error` | `string \| null` | Last auth error message. |
 | `isLoggingOut` | `boolean \| undefined` | True from `logout()` until the page reloads. |
-| `login` | `() => Promise<void>` | Redirects to the Hypery authorize page. After a `logout()` it adds `prompt=select_account` once. |
-| `loginPopup` | `() => Promise<PopupAuthResult>` | Log in via popup. Resolves `{ ok, blocked, cancelled }`. |
+| `login` | `(options?: LoginOptions) => Promise<void>` | Redirects to the Hypery authorize page. `options.provider` (`'google' \| 'github'`) skips the hosted login page. After a `logout()` it adds `prompt=select_account` once. |
+| `loginPopup` | `(options?: LoginOptions) => Promise<PopupAuthResult>` | Log in via popup. Resolves `{ ok, blocked, cancelled }`. |
 | `signUp` | `() => Promise<void>` | Same as `login` but always with `prompt=select_account`. |
 | `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then `window.location.replace('/')`. |
 | `refreshAuth` | `() => Promise<void>` | Reloads the user from the gateway. |
@@ -118,17 +121,20 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 ## Storage keys
 
 For reference, the SDK writes these keys to the configured storage:
-`hypery_auth_tokens`, `hypery_auth_user`, `hypery_oauth_verifier`. It also uses
+`hypery_auth_tokens`, `hypery_auth_user`, and during login `hypery_oauth_verifier`
+and `hypery_oauth_state` (in `sessionStorage` for `memory` mode). It also uses
 `localStorage` for `hypery_force_reauth` (after logout) and
 `hypery_pending_checkout` (redirect-mode checkout resume). See
 [ADVANCED.md](./ADVANCED.md) for `TokenStorage`.
 
 ## Environment variables
 
-The SDK itself does not read env vars for the provider, but two hooks fall back
-to `process.env.NEXT_PUBLIC_GATEWAY_URL` for their base URL: `useMemberships`
-(and therefore `useActiveWorkspace` and `WorkspaceSwitcher`) and `useWallet`. If
-it is unset they request a relative URL on your own origin. A typical `.env.local`:
+The SDK itself does not read env vars for the provider. `useMemberships`,
+`useActiveWorkspace`, `WorkspaceSwitcher` and `useWallet` use, in order: an
+explicit `gatewayUrl` argument/prop, the provider's `config.gatewayUrl`,
+`process.env.NEXT_PUBLIC_GATEWAY_URL`, then a relative URL on your own origin.
+The plain `setActiveWorkspace` function skips the provider step (pass
+`gatewayUrl` explicitly). A typical `.env.local`:
 
 ```env
 NEXT_PUBLIC_OAUTH_CLIENT_ID=your_client_id

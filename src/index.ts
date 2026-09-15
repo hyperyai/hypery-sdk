@@ -116,6 +116,7 @@ export type {
   InteractionMode,
   ResolvedMode,
   PopupAuthResult,
+  LoginOptions,
   User,
   AuthTokens,
   AuthState,

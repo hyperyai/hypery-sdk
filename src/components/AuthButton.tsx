@@ -21,11 +21,11 @@ export interface AuthButtonProps {
   className?: string;
   /** Initial auth mode */
   mode?: 'signin' | 'signup';
-  /** Callback after successful auth */
+  /** Called once the user is actually signed in. */
   onSuccess?: () => void;
   /** Show social login options */
   showSocial?: boolean;
-  /** Show email/password form */
+  /** Show a "Continue with email" button (opens the hosted login page). Defaults to false. */
   showEmailPassword?: boolean;
   /** Custom branding for modal */
   branding?: {
@@ -63,7 +63,7 @@ export function AuthButton({
   mode = 'signin',
   onSuccess,
   showSocial = true,
-  showEmailPassword = true,
+  showEmailPassword = false,
   branding,
 }: AuthButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -82,11 +82,8 @@ export function AuthButton({
   };
 
   const handleClick = () => {
-    console.log('AuthButton clicked! Opening modal...', { isOpen, mode });
     setIsOpen(true);
   };
-
-  console.log('AuthButton render:', { isOpen, mode, variant, size });
 
   return (
     <>
@@ -105,10 +102,7 @@ export function AuthButton({
 
       <AuthModal
         isOpen={isOpen}
-        onClose={() => {
-          console.log('AuthModal closing...');
-          setIsOpen(false);
-        }}
+        onClose={() => setIsOpen(false)}
         initialMode={mode}
         onSuccess={() => {
           setIsOpen(false);

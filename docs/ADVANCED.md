@@ -42,7 +42,8 @@ PKCE authorization-code flow against `{gatewayUrl}/api/oauth/*`.
 `getAuthorizationUrl(config): Promise<string>`
 
 Generates a PKCE verifier/challenge, stores the verifier as
-`hypery_oauth_verifier` in `localStorage`/`sessionStorage` (not in `memory` mode),
+`hypery_oauth_verifier` and `hypery_oauth_state` (in `localStorage`/`sessionStorage`;
+`memory` mode uses `sessionStorage`, or an in-memory fallback),
 and returns `{gatewayUrl}/api/oauth/authorize?...` with
 `code_challenge_method=S256`.
 
@@ -53,7 +54,8 @@ and returns `{gatewayUrl}/api/oauth/authorize?...` with
 | `gatewayUrl` | `string` | |
 | `scopes` | `string[]` | Joined with spaces. |
 | `storage` | `'localStorage' \| 'sessionStorage' \| 'memory'` | Where the verifier is stored. |
-| `state` | `string?` | Random if omitted. The SDK does not validate `state` on return. |
+| `state` | `string?` | Random if omitted. Stored and verified on return. |
+| `provider` | `'google' \| 'github'` | Optional. Skips the hosted login page. |
 | `prompt` | `'login' \| 'select_account' \| 'consent'` | Optional. |
 
 ```ts
@@ -66,15 +68,20 @@ window.location.href = await getAuthorizationUrl({
 
 ### `exchangeCodeForToken`
 
-`exchangeCodeForToken(code, { clientId, redirectUri, gatewayUrl, storage }): Promise<AuthTokens>`
+`exchangeCodeForToken(code, { clientId, redirectUri, gatewayUrl, storage, state? }): Promise<AuthTokens>`
 
 Posts `grant_type=authorization_code` with the stored verifier to
-`/api/oauth/token`, then removes the verifier. Throws `OAuth verifier not found`
-when there is no verifier, or the server's `error_description` / `error` on failure.
+`/api/oauth/token`, then removes the verifier and state. When `state` is passed
+(the value from the callback URL; `null` if absent) it is compared with the stored
+one first and a mismatch throws `OAuth state mismatch…` without any request.
+Throws `OAuth verifier not found` when there is no verifier, or the server's
+`error_description` / `error` on failure.
 
 ```ts
-const code = new URLSearchParams(location.search).get('code')!;
-const tokens = await exchangeCodeForToken(code, { clientId, redirectUri, gatewayUrl, storage: 'localStorage' });
+const params = new URLSearchParams(location.search);
+const tokens = await exchangeCodeForToken(params.get('code')!, {
+  clientId, redirectUri, gatewayUrl, storage: 'localStorage', state: params.get('state'),
+});
 new TokenStorage().saveTokens(tokens);
 ```
 

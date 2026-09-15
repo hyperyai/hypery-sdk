@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import type { WalletState } from '../hooks/useWallet';
+import { errorMessageFromBody } from '../lib/gateway';
 
 /**
  * Flat error object accepted by {@link RestrictionModal}: `code`/`message`
@@ -21,18 +23,6 @@ export interface RestrictionError {
   required?: number;
   // Generic extensible fields
   [key: string]: any;
-}
-
-type BillingMode = 'metered' | 'prepaid';
-
-interface WalletState {
-  mode: BillingMode;
-  balance: { current: number; reserved: number; monthlySpent: number; monthlyLimit: number };
-  paymentMethod: { exists: boolean; last4?: string; brand?: string };
-  autoTopUp: { enabled: boolean; threshold?: number; amount?: number };
-  lowBalance: { isLow: boolean; threshold: number; current: number };
-  topupTiers: Array<{ name: string; usdAmount: number; credits: number; bonus: number; popular?: boolean }>;
-  settingsUrls: { billing: string; topup: string; addPaymentMethod: string };
 }
 
 interface RestrictionModalProps {
@@ -136,7 +126,7 @@ export function RestrictionModal({
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok || !body?.success) {
-          throw new Error(body?.error || `Top-up failed (${res.status})`);
+          throw new Error(errorMessageFromBody(body, `Top-up failed (${res.status})`));
         }
         await loadWallet();
         setFunded(true);
@@ -163,7 +153,7 @@ export function RestrictionModal({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.url) {
-        throw new Error(body?.error || `Could not start checkout (${res.status})`);
+        throw new Error(errorMessageFromBody(body, `Could not start checkout (${res.status})`));
       }
 
       const popup = window.open(body.url, 'hypery-add-card', 'width=480,height=720');
@@ -228,6 +218,8 @@ export function RestrictionModal({
     : 'Add funds';
 
   const mode = wallet?.mode;
+  // metered and vag_passthrough both bill the card for usage (no prepaid balance).
+  const isPayAsYouGo = mode === 'metered' || mode === 'vag_passthrough';
   const hasCard = !!wallet?.paymentMethod?.exists;
 
   return (
@@ -264,7 +256,7 @@ export function RestrictionModal({
                   </div>
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-xs text-gray-500">
-                      {mode === 'metered' ? 'Pay-as-you-go billing' : 'Prepaid balance'}
+                      {isPayAsYouGo ? 'Pay-as-you-go billing' : 'Prepaid balance'}
                     </span>
                     {wallet.paymentMethod.exists && (
                       <span className="text-xs text-gray-500">
@@ -316,7 +308,7 @@ export function RestrictionModal({
                       </button>
                     )}
                   </>
-                ) : mode === 'metered' || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
+                ) : isPayAsYouGo || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
                   // Metered, or no card on file → capture/update a card first.
                   <>
                     <button
@@ -326,7 +318,7 @@ export function RestrictionModal({
                     >
                       {busy ? 'Opening secure checkout…' : hasCard ? 'Update payment method' : 'Add a payment method'}
                     </button>
-                    {mode === 'metered' && (
+                    {isPayAsYouGo && (
                       <p className="text-xs text-gray-500 text-center">
                         You’ll be billed automatically as you use the service.
                       </p>

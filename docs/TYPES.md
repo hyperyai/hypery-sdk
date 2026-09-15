@@ -16,6 +16,7 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | `AuthContextValue` | Value returned by `useAuth()` / `useHyperyAuth()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `AuthState` | `{ user, isAuthenticated, isLoading, error, isLoggingOut? }` (base of `AuthContextValue`). | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `PopupAuthResult` | `{ ok, blocked, cancelled }` from `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#popupauthresult) |
+| `LoginOptions` | `{ provider?: 'google' \| 'github' }` for `login()` / `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `User` | `{ id, email, name, image? }`. | [HOOKS.md](./HOOKS.md#useuser) |
 | `AuthTokens` | `{ accessToken, refreshToken, expiresIn, tokenType }`. | [ADVANCED.md](./ADVANCED.md) |
 
@@ -49,7 +50,7 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 
 | Type | Description | Details |
 | --- | --- | --- |
-| `BillingMode` | `'metered' \| 'prepaid'`. | [HOOKS.md](./HOOKS.md#usewallet) |
+| `BillingMode` | `'metered' \| 'prepaid' \| 'vag_passthrough'`. | [HOOKS.md](./HOOKS.md#usewallet) |
 | `WalletState` | Snapshot from `GET /api/wallet/state`. | [HOOKS.md](./HOOKS.md#usewallet) |
 | `WalletTier` | `{ name, usdAmount, credits, bonus, popular? }`. | [HOOKS.md](./HOOKS.md#usewallet) |
 | `UseWalletReturn` | Return of `useWallet`. | [HOOKS.md](./HOOKS.md#usewallet) |
