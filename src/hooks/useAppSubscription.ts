@@ -6,8 +6,8 @@
  * Loads the app's active plans (GET /api/marketplace/plans) and the user's
  * subscriptions with their remaining app-scoped credit grants
  * (GET /api/marketplace/subscriptions), and exposes subscribe / cancel / resume.
- * `subscribe` runs the full useCheckout chain (log in → subscribe → add a card
- * only if the user has none on Hypery → retry).
+ * `subscribe` runs the useCheckout chain: log in if needed, then Hypery's hosted
+ * subscribe page (the user picks the team, card and interval there).
  *
  * Plans are created by the app developer in the Hypery dashboard; a plan's price
  * and its credit grants are configured independently.
@@ -107,8 +107,8 @@ export interface UseAppSubscriptionReturn {
   isLoading: boolean;
   error: ParsedError | null;
   refresh: () => Promise<void>;
-  /** Subscribe to a plan (login / add-card handled). Refreshes on success. */
-  subscribe: (planId: string, opts?: { idempotencyKey?: string; interval?: PlanInterval }) => Promise<CheckoutResult>;
+  /** Subscribe on Hypery's hosted page (login handled; `interval` is the preselection). Refreshes on success. */
+  subscribe: (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval }) => Promise<CheckoutResult>;
   /** Stop renewal at period end (issued grants stay usable until they expire). */
   cancel: (subscriptionId?: string) => Promise<boolean>;
   /** Undo a pending cancellation. */
@@ -137,7 +137,7 @@ const LIVE = new Set(['active', 'trialing', 'past_due']);
  */
 export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
   const { authenticatedFetch, gatewayUrl, isAuthenticated, isLoading: authLoading } = useHyperyAuth();
-  const { checkout } = useCheckout();
+  const { checkout, lastResult } = useCheckout();
   const [plans, setPlans] = useState<AppPlan[]>([]);
   const [subscriptions, setSubscriptions] = useState<AppSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -175,6 +175,11 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
     if (!authLoading) void refresh();
   }, [authLoading, refresh]);
 
+  // A subscription completed via a redirect return: reload.
+  useEffect(() => {
+    if (lastResult?.status === 'success' && lastResult.data?.subscription) void refresh();
+  }, [lastResult, refresh]);
+
   const activeSubscription = useMemo(
     () => subscriptions.find((s) => LIVE.has(s.status)) ?? null,
     [subscriptions],
@@ -185,11 +190,10 @@ export function useAppSubscription(appId: string): UseAppSubscriptionReturn {
   );
 
   const subscribe = useCallback(
-    async (planId: string, opts?: { idempotencyKey?: string; interval?: PlanInterval }) => {
+    async (planId: string, opts?: { /** @deprecated ignored */ idempotencyKey?: string; interval?: PlanInterval }) => {
       const result = await checkout({
         kind: 'subscription',
         planId,
-        idempotencyKey: opts?.idempotencyKey,
         ...(opts?.interval ? { interval: opts.interval } : {}),
       });
       if (result.status === 'success') await refresh();

@@ -52,6 +52,7 @@ export type {
   CheckoutStatus,
   CheckoutResult,
   UseCheckoutReturn,
+  SubscribeSessionResult,
   AppPlan,
   AppPlanGrant,
   AppPlanPrice,

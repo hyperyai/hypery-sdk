@@ -1,10 +1,9 @@
 /**
  * SubscribeButton — subscribe the user to one of your app's plans via Hypery.
  *
- * Runs the full flow through {@link useCheckout}: logs the user in if needed,
- * subscribes with the card they already have on Hypery, and only asks for a card
- * if they have none. Like BuyButton it asks for an explicit confirmation first,
- * since the card is charged off-session. Never throws.
+ * Runs the flow through {@link useCheckout}: logs the user in if needed, then
+ * opens Hypery's hosted subscribe page where the user picks the team, card and
+ * interval. Like BuyButton it asks for an explicit confirmation first. Never throws.
  */
 
 "use client";
@@ -29,13 +28,9 @@ export interface SubscribeButtonProps {
   label?: React.ReactNode;
   /** Require a confirming second click before subscribing. Defaults to true. */
   requireConfirmation?: boolean;
-  /** Called with the gateway response on success (`{ subscription, alreadySubscribed }`). */
+  /** Called on success with `{ subscription, team }` from the session result. */
   onSuccess?: (data: any) => void;
-  /**
-   * Called for failures. When the card needs authentication (3-D Secure),
-   * `error.code === 'PAYMENT_INCOMPLETE'` and `result.data.error.clientSecret` /
-   * `stripeAccount` can be confirmed with Stripe.js.
-   */
+  /** Called for failures (session creation, result fetch, `STATE_MISMATCH`). */
   onError?: (error: ParsedError, result: CheckoutResult) => void;
   className?: string;
   branding?: BrandingConfig;
@@ -47,7 +42,7 @@ function priceText(priceCents?: number, interval?: "month" | "year"): string {
 }
 
 /**
- * Subscribe the user to one of your app's plans (login and card entry handled).
+ * Subscribe the user to one of your app's plans (login handled; card entry happens on the hosted page).
  *
  * @example
  * ```tsx

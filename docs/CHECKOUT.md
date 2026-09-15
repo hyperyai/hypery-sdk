@@ -17,6 +17,8 @@ Contents: [How the flow works](#how-the-flow-works-popup-vs-redirect) ·
 
 `useCheckout` (and the two buttons built on it) runs one chain:
 log in if needed, charge, add a card if the charge needs one, retry once.
+Subscriptions differ after login: they open Hypery's hosted subscribe page
+(see [Subscriptions: hosted subscribe page](#subscriptions-hosted-subscribe-page)).
 
 | Step | `popup` mode | `redirect` mode |
 | --- | --- | --- |
@@ -31,9 +33,40 @@ A card is added only when the charge returns `PAYMENT_METHOD_REQUIRED`, or a
 `402` other than `PAYMENT_INCOMPLETE` / `PAYMENT_DECLINED`. Those two are
 returned as errors because a new card will not fix them.
 
-Purchases and subscriptions get an idempotency key generated once per
-`checkout()` call and persisted with the redirect resume, so a resumed charge is
-not billed twice.
+Purchases get an idempotency key generated once per `checkout()` call and
+persisted with the redirect resume, so a resumed charge is not billed twice.
+
+### Subscriptions: hosted subscribe page
+
+Requires a Hypery gateway with hosted subscribe sessions (hyperyai/hypery#193).
+After making sure the user is logged in, `kind: 'subscription'`:
+
+1. Creates a session: `POST /api/marketplace/subscribe-sessions` with
+   `{ planId, interval?, state }` and a fresh random `state`
+   (`crypto.getRandomValues`). Popup mode sends `returnOrigin` = the origin of
+   `config.redirectUri`; redirect mode sends `returnUrl` = the current page URL.
+   Both must match a redirect URI registered on your OAuth app.
+2. Opens the returned `url`. On that page the user picks the **team** that owns
+   the subscription, the card and the interval (your `interval` is only the
+   preselection).
+   - popup (`hypery-subscribe`, 480x760): when the user is already logged in the
+     window is opened synchronously in the click (showing "Loading…") and pointed
+     at the session once it's created, so popup blockers allow it; it is closed if
+     session creation fails. If login comes first, the subscribe popup opens after
+     the login popup. Only a `hypery:subscribe` message
+     from the gateway origin with the matching `sessionId` and `state` is accepted.
+     Closing the popup returns `cancelled`.
+   - redirect (or a blocked popup): `{ sessionId, state, input }` is saved in
+     `localStorage` (`hypery_pending_subscribe`) and the page navigates away.
+     Hypery sends the user back with `?subscribe_session=&state=&subscribe_status=`;
+     on that load `useCheckout` checks `state` against storage, removes the params
+     with `history.replaceState`, fetches the result, and sets `status` and `lastResult`.
+3. Fetches the authoritative outcome,
+   `GET /api/marketplace/subscribe-sessions/:id/result` (`SubscribeSessionResult`).
+   Only `status: 'completed'` is a success; `cancelled`, `pending` or `expired` give
+   `{ status: 'cancelled' }`. A state mismatch is an error with code `STATE_MISMATCH`.
+
+On success `CheckoutResult.data` is `{ subscription: AppSubscription, team: { id, name } }`.
 
 ---
 
@@ -71,8 +104,8 @@ The props type is exported as `BuyButtonProps`.
 
 ## `SubscribeButton`
 
-Subscribes the user to one of your app's plans (`kind: 'subscription'`), with the
-same two-click confirmation. Never throws.
+Subscribes the user to one of your app's plans (`kind: 'subscription'`) on
+Hypery's hosted subscribe page, with the same two-click confirmation. Never throws.
 
 ```tsx
 import { SubscribeButton, planPriceCents } from '@hyperyai/sdk';
@@ -87,11 +120,11 @@ const yearly = planPriceCents(plan, 'year');
 | --- | --- | --- | --- |
 | `planId` | `string` | required | Plan id from `useAppSubscription().plans`. |
 | `priceCents` | `number` | none | Display only; Hypery charges the plan's real price. |
-| `interval` | `'month' \| 'year'` | not sent (server defaults to monthly) | Billing interval; also shown as `/mo` or `/yr`. The plan must offer it, otherwise the error is `INTERVAL_NOT_OFFERED`. |
+| `interval` | `'month' \| 'year'` | not sent (server defaults to monthly) | Interval preselected on the hosted page (the user can change it); also shown as `/mo` or `/yr`. |
 | `label` | `ReactNode` | `Subscribe` + price | Idle label. |
 | `requireConfirmation` | `boolean` | `true` | Two-click confirm. |
-| `onSuccess` | `(data: any) => void` | none | Gateway response, `{ subscription, alreadySubscribed }`. |
-| `onError` | `(error: ParsedError, result: CheckoutResult) => void` | none | Terminal errors. For 3-D Secure, `error.code === 'PAYMENT_INCOMPLETE'` and `result.data.error.clientSecret` / `stripeAccount` can be confirmed with Stripe.js. |
+| `onSuccess` | `(data: any) => void` | none | `{ subscription, team }` from the session result. |
+| `onError` | `(error: ParsedError, result: CheckoutResult) => void` | none | Terminal errors (session creation, result fetch, `STATE_MISMATCH`). Card entry and 3-D Secure happen on the hosted page. |
 | `className` | `string` | `''` | Appended classes. |
 | `branding` | `BrandingConfig` | none | `primaryColor` becomes the button background. |
 
@@ -120,14 +153,15 @@ if (r.status === 'success') refreshBalance();
 | --- | --- | --- |
 | `'purchase'` | `appId: string`, `amountCents: number`, `description?: string`, `idempotencyKey?: string` | `POST /api/marketplace/checkout` |
 | `'topup'` | `usdAmount: number` | `POST /api/wallet/topup` |
-| `'subscription'` | `planId: string`, `interval?: PlanInterval`, `idempotencyKey?: string` | `POST /api/marketplace/subscribe` |
+| `'subscription'` | `planId: string`, `interval?: PlanInterval` (preselection), `idempotencyKey?` (deprecated, ignored) | `POST /api/marketplace/subscribe-sessions` + hosted page |
 
 | Returns | Type | Description |
 | --- | --- | --- |
 | `checkout` | `(input: CheckoutInput) => Promise<CheckoutResult>` | Run the flow. |
-| `status` | `CheckoutStatus` | `'idle' \| 'authenticating' \| 'charging' \| 'adding-card' \| 'redirecting' \| 'success' \| 'error' \| 'cancelled'`. |
+| `status` | `CheckoutStatus` | `'idle' \| 'authenticating' \| 'charging' \| 'adding-card' \| 'subscribing' \| 'redirecting' \| 'success' \| 'error' \| 'cancelled'`. |
 | `isRunning` | `boolean` | True for any status other than `idle`, `success`, `error`, `cancelled`. |
 | `error` | `ParsedError \| null` | Last terminal error. |
+| `lastResult` | `CheckoutResult \| null` | Last finished outcome, including a subscription resolved after a redirect return. |
 
 `CheckoutResult`: `{ status: 'success' | 'error' | 'cancelled' | 'redirecting'; data?: any; error?: ParsedError }`.
 On `error` from the gateway, `data` carries the raw response body. A second
@@ -213,7 +247,7 @@ function Pricing({ appId }: { appId: string }) {
 | Returns | Type | Description |
 | --- | --- | --- |
 | `plans` | `AppPlan[]` | Active plans. |
-| `subscriptions` | `AppSubscription[]` | All of the user's subscriptions to this app. |
+| `subscriptions` | `AppSubscription[]` | The app's subscriptions across all of the user's teams (subscriptions are team-owned). |
 | `activeSubscription` | `AppSubscription \| null` | First with status `active`, `trialing` or `past_due`. |
 | `isSubscribed` | `boolean` | `!!activeSubscription`. |
 | `remainingCreditUsd` | `number` | Sum of `remainingUsd` over the live subscription's grants. |
@@ -223,7 +257,7 @@ function Pricing({ appId }: { appId: string }) {
 | `isLoading` | `boolean` | |
 | `error` | `ParsedError \| null` | Last load/action error. |
 | `refresh` | `() => Promise<void>` | Refetch both lists. |
-| `subscribe` | `(planId, opts?: { idempotencyKey?, interval? }) => Promise<CheckoutResult>` | Runs `useCheckout`; refreshes on success. |
+| `subscribe` | `(planId, opts?: { interval? }) => Promise<CheckoutResult>` | Runs `useCheckout` (hosted subscribe page; `interval` is the preselection); refreshes on success, including after a redirect return. |
 | `cancel` | `(subscriptionId?: string) => Promise<boolean>` | Stop renewal at period end. Defaults to the live subscription. |
 | `resume` | `(subscriptionId?: string) => Promise<boolean>` | Undo a pending cancellation. |
 | `switchInterval` | `(subscriptionId: string \| undefined, interval: PlanInterval) => Promise<SwitchIntervalResult>` | See below. |
