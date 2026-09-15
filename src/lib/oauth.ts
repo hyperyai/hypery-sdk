@@ -49,9 +49,71 @@ export async function generatePKCE(): Promise<{
   return { verifier, challenge };
 }
 
+type StorageType = 'localStorage' | 'sessionStorage' | 'memory';
+
+const VERIFIER_KEY = 'hypery_oauth_verifier';
+const STATE_KEY = 'hypery_oauth_state';
+
+/** In-memory fallback for the login transaction when no Web Storage is available. */
+const memoryTransaction = new Map<string, string>();
+
 /**
- * Build the OAuth authorization URL. Generates a PKCE pair and stores the
- * verifier as `hypery_oauth_verifier` (not in `memory` mode).
+ * Where the short-lived login transaction (PKCE verifier + `state`) lives.
+ * `localStorage`/`sessionStorage` use that store. `memory` keeps TOKENS in
+ * memory but must still survive the authorize redirect, so the transaction goes
+ * to `sessionStorage` when available (tab-scoped, removed after the exchange),
+ * falling back to an in-memory map (popup login only) when it is not.
+ */
+function transactionStore(storage: StorageType): Storage | Map<string, string> {
+  try {
+    if (typeof window !== 'undefined') {
+      if (storage === 'localStorage' && typeof localStorage !== 'undefined') return localStorage;
+      if (typeof sessionStorage !== 'undefined') return sessionStorage;
+    }
+  } catch {
+    // Access to Web Storage can throw (privacy modes) — fall through.
+  }
+  return memoryTransaction;
+}
+
+function txGet(storage: StorageType, key: string): string | null {
+  const store = transactionStore(storage);
+  return store instanceof Map ? store.get(key) ?? null : store.getItem(key);
+}
+
+function txSet(storage: StorageType, key: string, value: string): void {
+  const store = transactionStore(storage);
+  if (store instanceof Map) store.set(key, value);
+  else store.setItem(key, value);
+}
+
+function txRemove(storage: StorageType, key: string): void {
+  const store = transactionStore(storage);
+  if (store instanceof Map) store.delete(key);
+  else store.removeItem(key);
+}
+
+/** Remove the stored PKCE verifier and `state` (after an exchange or on logout). */
+export function clearOAuthTransaction(storage: StorageType): void {
+  txRemove(storage, VERIFIER_KEY);
+  txRemove(storage, STATE_KEY);
+}
+
+/**
+ * Throw unless `returnedState` equals the `state` stored when the authorization
+ * URL was built. Guards the callback against login CSRF / injected codes.
+ */
+export function verifyOAuthState(storage: StorageType, returnedState: string | null | undefined): void {
+  const expected = txGet(storage, STATE_KEY);
+  if (!expected || !returnedState || expected !== returnedState) {
+    throw new Error('OAuth state mismatch: the authorization response does not match this login attempt');
+  }
+}
+
+/**
+ * Build the OAuth authorization URL. Generates a PKCE pair and a `state`, and
+ * stores both (`hypery_oauth_verifier` / `hypery_oauth_state`) for the callback.
+ * In `memory` mode they go to `sessionStorage` (or an in-memory fallback).
  */
 export async function getAuthorizationUrl(config: {
   clientId: string;
@@ -61,17 +123,15 @@ export async function getAuthorizationUrl(config: {
   storage: 'localStorage' | 'sessionStorage' | 'memory';
   state?: string;
   prompt?: 'login' | 'select_account' | 'consent';
+  /** Skip the hosted login page and go straight to this identity provider. */
+  provider?: 'google' | 'github';
 }): Promise<string> {
   const { verifier, challenge } = await generatePKCE();
-
-  // Store verifier (will be used when exchanging code for token)
-  if (config.storage !== 'memory' && typeof window !== 'undefined') {
-    const storage =
-      config.storage === 'localStorage' ? localStorage : sessionStorage;
-    storage.setItem('hypery_oauth_verifier', verifier);
-  }
-
   const state = config.state || generateRandomString(16);
+
+  // Store verifier + state (used and checked when the code comes back).
+  txSet(config.storage, VERIFIER_KEY, verifier);
+  txSet(config.storage, STATE_KEY, state);
 
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -87,12 +147,17 @@ export async function getAuthorizationUrl(config: {
   if (config.prompt) {
     params.set('prompt', config.prompt);
   }
+  if (config.provider) {
+    params.set('provider', config.provider);
+  }
 
   return `${config.gatewayUrl}/api/oauth/authorize?${params.toString()}`;
 }
 
 /**
  * Exchange an authorization code for tokens using the stored PKCE verifier.
+ * When `config.state` is passed (the `state` returned on the callback) it is
+ * verified against the stored one first; a mismatch throws before any request.
  * Throws when the verifier is missing or the token request fails.
  */
 export async function exchangeCodeForToken(
@@ -102,16 +167,15 @@ export async function exchangeCodeForToken(
     redirectUri: string;
     gatewayUrl: string;
     storage: 'localStorage' | 'sessionStorage' | 'memory';
+    /** `state` from the callback URL; verified when provided. */
+    state?: string | null;
   }
 ): Promise<AuthTokens> {
-  let verifier: string | null = null;
-
-  // Get verifier from storage
-  if (config.storage !== 'memory' && typeof window !== 'undefined') {
-    const storage =
-      config.storage === 'localStorage' ? localStorage : sessionStorage;
-    verifier = storage.getItem('hypery_oauth_verifier');
+  if (config.state !== undefined) {
+    verifyOAuthState(config.storage, config.state);
   }
+
+  const verifier = txGet(config.storage, VERIFIER_KEY);
 
   if (!verifier) {
     throw new Error('OAuth verifier not found');
@@ -139,12 +203,8 @@ export async function exchangeCodeForToken(
     );
   }
 
-  // Clear verifier
-  if (config.storage !== 'memory' && typeof window !== 'undefined') {
-    const storage =
-      config.storage === 'localStorage' ? localStorage : sessionStorage;
-    storage.removeItem('hypery_oauth_verifier');
-  }
+  // Clear the one-time transaction
+  clearOAuthTransaction(config.storage);
 
   const data = await response.json();
 
