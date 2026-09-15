@@ -1,25 +1,20 @@
 import { describe, expect, it } from 'bun:test';
-import { CHECKOUT_ENDPOINTS, chargeBody, intervalSwitchPath, needsCard, planPriceCents, withIdempotency } from '../checkout';
+import { CHECKOUT_ENDPOINTS, chargeBody, intervalSwitchPath, needsCard, planPriceCents, subscribeSessionBody, withIdempotency } from '../checkout';
 import { parseError } from '../parse-error';
 
 describe('checkout helpers', () => {
-  it('routes subscriptions to the subscribe endpoint with buyer-wallet card entry', () => {
-    expect(CHECKOUT_ENDPOINTS.subscription).toEqual({
-      charge: '/api/marketplace/subscribe',
-      cardSetup: '/api/buyer/wallet/checkout-setup',
-    });
+  it('no longer routes subscriptions through the charge/card-setup endpoints', () => {
+    expect('subscription' in CHECKOUT_ENDPOINTS).toBe(false);
   });
 
-  it('gives purchases and subscriptions a stable idempotency key, keeps a supplied one, leaves top-ups alone', () => {
-    const sub = withIdempotency({ kind: 'subscription', planId: 'plan_1' });
-    expect(sub.kind === 'subscription' && typeof sub.idempotencyKey).toBe('string');
-    expect(withIdempotency({ kind: 'subscription', planId: 'p', idempotencyKey: 'mine-123' })).toMatchObject({ idempotencyKey: 'mine-123' });
+  it('gives purchases a stable idempotency key, keeps a supplied one, leaves top-ups and subscriptions alone', () => {
+    expect(withIdempotency({ kind: 'subscription', planId: 'plan_1' })).toEqual({ kind: 'subscription', planId: 'plan_1' });
+    expect(withIdempotency({ kind: 'purchase', appId: 'a', amountCents: 1, idempotencyKey: 'mine-123' })).toMatchObject({ idempotencyKey: 'mine-123' });
     expect(withIdempotency({ kind: 'purchase', appId: 'a', amountCents: 100 })).toHaveProperty('idempotencyKey');
     expect(withIdempotency({ kind: 'topup', usdAmount: 5 })).toEqual({ kind: 'topup', usdAmount: 5 });
   });
 
   it('builds the charge body per kind', () => {
-    expect(chargeBody({ kind: 'subscription', planId: 'p', idempotencyKey: 'k' })).toEqual({ planId: 'p', idempotencyKey: 'k' });
     expect(chargeBody({ kind: 'topup', usdAmount: 10 })).toEqual({ amount: 10 });
     expect(chargeBody({ kind: 'purchase', appId: 'a', amountCents: 50, idempotencyKey: 'k' })).toMatchObject({ appId: 'a', amountCents: 50 });
   });
@@ -33,16 +28,10 @@ describe('checkout helpers', () => {
     expect(needsCard(e('SUBSCRIPTION_IN_PROGRESS'), 409)).toBe(false);
   });
 
-  it('sends the billing interval to subscribe only when given (backward compatible)', () => {
-    expect(chargeBody({ kind: 'subscription', planId: 'p', idempotencyKey: 'k', interval: 'year' })).toEqual({ planId: 'p', idempotencyKey: 'k', interval: 'year' });
-    expect(chargeBody({ kind: 'subscription', planId: 'p', idempotencyKey: 'k' })).not.toHaveProperty('interval');
-  });
-
-  it('keeps the interval through idempotency + redirect persistence (retry after add-card)', () => {
+  it('keeps a subscription interval preselection through redirect persistence', () => {
     const input = withIdempotency({ kind: 'subscription', planId: 'p', interval: 'year' });
-    const resumed = JSON.parse(JSON.stringify({ input, attempts: 1 })).input;
-    expect(chargeBody(resumed)).toMatchObject({ planId: 'p', interval: 'year' });
-    expect(chargeBody(resumed)).toEqual(chargeBody(input));
+    const resumed = JSON.parse(JSON.stringify({ sessionId: 's', state: 'x', input })).input;
+    expect(subscribeSessionBody(resumed, { state: 'abcdefgh', mode: 'redirect', returnUrl: 'https://a.example/' })).toMatchObject({ planId: 'p', interval: 'year' });
   });
 
   it('builds the interval switch path', () => {

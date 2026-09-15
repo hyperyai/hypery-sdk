@@ -63,6 +63,7 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | Type | Description | Details |
 | --- | --- | --- |
 | `CheckoutInput` | `purchase` / `topup` / `subscription` union. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
+| `SubscribeSessionResult` | Authoritative hosted subscribe session outcome (`status`, `state`, `team`, `subscription`). | [CHECKOUT.md](./CHECKOUT.md#subscriptions-hosted-subscribe-page) |
 | `CheckoutStatus` | Flow status string union. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
 | `CheckoutResult` | `{ status, data?, error? }`. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
 | `UseCheckoutReturn` | Return of `useCheckout`. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |

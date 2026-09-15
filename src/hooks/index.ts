@@ -58,6 +58,7 @@ export type {
 export { useCheckout } from './useCheckout';
 export type {
   CheckoutInput,
+  SubscribeSessionResult,
   CheckoutStatus,
   CheckoutResult,
   UseCheckoutReturn,

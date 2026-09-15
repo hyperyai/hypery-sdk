@@ -16,7 +16,9 @@
  * Covers three charge kinds:
  *   - `purchase`     — a marketplace Connect charge (POST /api/marketplace/checkout).
  *   - `topup`        — buy AI credits (POST /api/wallet/topup).
- *   - `subscription` — subscribe to an app plan (POST /api/marketplace/subscribe).
+ *   - `subscription` — subscribe to an app plan on Hypery's hosted subscribe page
+ *                      (POST /api/marketplace/subscribe-sessions; the user picks team,
+ *                      card and interval there; outcome verified via /result).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,16 +29,26 @@ import type { ParsedError } from '../types';
 import {
   CHECKOUT_ENDPOINTS as ENDPOINTS,
   chargeBody,
+  isValidSubscribeMessage,
   needsCard,
+  newSubscribeState,
+  parseSubscribeReturn,
+  stripSubscribeParams,
+  subscribeOutcome,
+  subscribeResultPath,
+  subscribeSessionBody,
+  SUBSCRIBE_MESSAGE_TYPE,
+  SUBSCRIBE_SESSIONS_PATH,
   withIdempotency,
   type CheckoutInput,
 } from '../lib/checkout';
 
-export type { CheckoutInput } from '../lib/checkout';
+export type { CheckoutInput, SubscribeSessionResult } from '../lib/checkout';
 
 const PENDING_KEY = 'hypery_pending_checkout';
 const MAX_ATTEMPTS = 3; // auth redirect + card redirect + margin; guards against loops
 const CARD_POPUP_NAME = 'hypery-add-card';
+const SUBSCRIBE_PENDING_KEY = 'hypery_pending_subscribe';
 
 /** Current step of the checkout flow. */
 export type CheckoutStatus =
@@ -44,6 +56,7 @@ export type CheckoutStatus =
   | 'authenticating'
   | 'charging'
   | 'adding-card'
+  | 'subscribing'
   | 'redirecting'
   | 'success'
   | 'error'
@@ -51,7 +64,8 @@ export type CheckoutStatus =
 
 /**
  * Outcome of `checkout()`. On a gateway error `data` carries the raw response
- * body (e.g. a subscription's SCA `clientSecret`).
+ * body. A successful subscription's `data` is `{ subscription, team }` from the
+ * session result.
  */
 export interface CheckoutResult {
   status: 'success' | 'error' | 'cancelled' | 'redirecting';
@@ -66,6 +80,8 @@ export interface UseCheckoutReturn {
   status: CheckoutStatus;
   isRunning: boolean;
   error: ParsedError | null;
+  /** Outcome of the last finished flow, including one resumed after a redirect return. */
+  lastResult: CheckoutResult | null;
 }
 
 // Module-level guard so a redirect-resume runs exactly once per page load, even
@@ -98,6 +114,38 @@ function clearPending(): void {
   }
 }
 
+interface PendingSubscribe {
+  sessionId: string;
+  state: string;
+  input: CheckoutInput;
+}
+function readPendingSubscribe(): PendingSubscribe | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SUBSCRIBE_PENDING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function writePendingSubscribe(p: PendingSubscribe): void {
+  try {
+    window.localStorage.setItem(SUBSCRIBE_PENDING_KEY, JSON.stringify(p));
+  } catch {
+    /* storage unavailable; the return can't be verified */
+  }
+}
+function clearPendingSubscribe(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(SUBSCRIBE_PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+let subscribeResumeConsumed = false;
+
 function currentUrl(): string {
   return typeof window !== 'undefined' ? window.location.href : '';
 }
@@ -114,10 +162,11 @@ function currentUrl(): string {
  * @see docs/CHECKOUT.md
  */
 export function useCheckout(): UseCheckoutReturn {
-  const { isAuthenticated, isLoading, loginPopup, login, interactionMode, gatewayUrl, getAccessToken } =
+  const { isAuthenticated, isLoading, loginPopup, login, interactionMode, gatewayUrl, getAccessToken, redirectUri } =
     useHyperyAuth();
   const [status, setStatus] = useState<CheckoutStatus>('idle');
   const [error, setError] = useState<ParsedError | null>(null);
+  const [lastResult, setLastResult] = useState<CheckoutResult | null>(null);
   const runningRef = useRef(false);
 
   const gatewayOrigin = (() => {
@@ -145,9 +194,91 @@ export function useCheckout(): UseCheckoutReturn {
     [gatewayUrl, getAccessToken],
   );
 
+  const authedGet = useCallback(
+    async (path: string): Promise<{ res: Response; body: any }> => {
+      const token = await getAccessToken();
+      const res = await fetch(`${gatewayUrl}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      return { res, body: await res.json().catch(() => ({})) };
+    },
+    [gatewayUrl, getAccessToken],
+  );
+
+  /** Fetch the authoritative session result and map it to a CheckoutResult. */
+  const finishSubscribe = useCallback(
+    async (sessionId: string, state: string): Promise<CheckoutResult> => {
+      const { res, body } = await authedGet(subscribeResultPath(sessionId));
+      if (!res.ok || body?.success === false) {
+        const parsed = parseError({ ...body, status: res.status });
+        return { status: 'error', error: parsed, data: body };
+      }
+      const outcome = subscribeOutcome(body, state);
+      if (outcome.status === 'error') {
+        return { status: 'error', error: parseError({ error: { code: outcome.reason, message: 'Subscribe session state mismatch' } }) };
+      }
+      return outcome;
+    },
+    [authedGet],
+  );
+
+  /** Create a hosted subscribe session and navigate this page to it. */
+  const subscribeRedirect = useCallback(
+    async (input: Extract<CheckoutInput, { kind: 'subscription' }>): Promise<CheckoutResult> => {
+      const state = newSubscribeState();
+      const { res, body } = await authedFetch(
+        SUBSCRIBE_SESSIONS_PATH,
+        subscribeSessionBody(input, { state, mode: 'redirect', returnUrl: stripSubscribeParams(currentUrl()) }),
+      );
+      if (!res.ok || !body?.url || !body?.sessionId) {
+        return { status: 'error', error: parseError({ ...body, status: res.status }), data: body };
+      }
+      writePendingSubscribe({ sessionId: body.sessionId, state, input });
+      window.location.href = body.url;
+      return { status: 'redirecting' };
+    },
+    [authedFetch],
+  );
+
+  /** Hosted subscribe page in a popup; falls back to redirect when blocked. */
+  const runSubscribe = useCallback(
+    async (input: Extract<CheckoutInput, { kind: 'subscription' }>): Promise<CheckoutResult> => {
+      setStatus('subscribing');
+      if (interactionMode !== 'popup') {
+        setStatus('redirecting');
+        return subscribeRedirect(input);
+      }
+      const state = newSubscribeState();
+      const { res, body } = await authedFetch(
+        SUBSCRIBE_SESSIONS_PATH,
+        subscribeSessionBody(input, { state, mode: 'popup', redirectUri }),
+      );
+      if (!res.ok || !body?.url || !body?.sessionId) {
+        return { status: 'error', error: parseError({ ...body, status: res.status }), data: body };
+      }
+      const sessionId: string = body.sessionId;
+      const popup = await openPopup({
+        url: body.url,
+        name: 'hypery-subscribe',
+        expectedOrigin: gatewayOrigin,
+        messageType: SUBSCRIBE_MESSAGE_TYPE,
+        width: 480,
+        height: 760,
+        accept: (event) => isValidSubscribeMessage(event, { origin: gatewayOrigin, sessionId, state }),
+      });
+      if (popup.blocked) {
+        setStatus('redirecting');
+        return subscribeRedirect(input);
+      }
+      if (popup.cancelled) return { status: 'cancelled' };
+      return finishSubscribe(sessionId, state);
+    },
+    [interactionMode, authedFetch, redirectUri, gatewayOrigin, subscribeRedirect, finishSubscribe],
+  );
+
   /** Open the Stripe-hosted card-entry popup and wait for it to finish (or close). */
   const addCardPopup = useCallback(
-    async (input: CheckoutInput): Promise<boolean> => {
+    async (input: Exclude<CheckoutInput, { kind: 'subscription' }>): Promise<boolean> => {
       const { body } = await authedFetch(ENDPOINTS[input.kind].cardSetup, {
         successUrl: currentUrl(),
         cancelUrl: currentUrl(),
@@ -169,7 +300,7 @@ export function useCheckout(): UseCheckoutReturn {
 
   /** Redirect to Stripe-hosted card entry, persisting the flow to resume on return. */
   const addCardRedirect = useCallback(
-    async (input: CheckoutInput, attempts: number): Promise<void> => {
+    async (input: Exclude<CheckoutInput, { kind: 'subscription' }>, attempts: number): Promise<void> => {
       const { body } = await authedFetch(ENDPOINTS[input.kind].cardSetup, {
         successUrl: currentUrl(),
         cancelUrl: currentUrl(),
@@ -216,6 +347,16 @@ export function useCheckout(): UseCheckoutReturn {
           }
         }
 
+        // 2a) Subscriptions run on Hypery's hosted subscribe page.
+        if (input.kind === 'subscription') {
+          clearPending();
+          const r = await runSubscribe(input);
+          if (r.status === 'error') setError(r.error ?? null);
+          setStatus(r.status);
+          if (r.status !== 'redirecting') setLastResult(r);
+          return r;
+        }
+
         // 2) Attempt the charge. Retry once after adding a card.
         for (let charge = 0; charge < 2; charge++) {
           setStatus('charging');
@@ -224,6 +365,7 @@ export function useCheckout(): UseCheckoutReturn {
           if (res.ok && body?.success !== false) {
             clearPending();
             setStatus('success');
+            setLastResult({ status: 'success', data: body });
             return { status: 'success', data: body };
           }
 
@@ -272,7 +414,7 @@ export function useCheckout(): UseCheckoutReturn {
         runningRef.current = false;
       }
     },
-    [isAuthenticated, interactionMode, loginPopup, login, authedFetch, addCardPopup, addCardRedirect],
+    [isAuthenticated, interactionMode, loginPopup, login, authedFetch, addCardPopup, addCardRedirect, runSubscribe],
   );
 
   const checkout = useCallback(
@@ -295,5 +437,38 @@ export function useCheckout(): UseCheckoutReturn {
     void runCheckout(pending.input, pending.attempts);
   }, [isAuthenticated, isLoading, runCheckout]);
 
-  return { checkout, status, isRunning: status !== 'idle' && status !== 'success' && status !== 'error' && status !== 'cancelled', error };
+  // Hosted subscribe redirect return: verify state, fetch the result, clean the URL.
+  useEffect(() => {
+    if (subscribeResumeConsumed || isLoading || typeof window === 'undefined') return;
+    const ret = parseSubscribeReturn(window.location.href);
+    if (!ret) return;
+    const pending = readPendingSubscribe();
+    if (!pending || pending.sessionId !== ret.sessionId) return; // not ours
+    if (!isAuthenticated) return;
+    subscribeResumeConsumed = true;
+    clearPendingSubscribe();
+    try {
+      window.history.replaceState(window.history.state, '', stripSubscribeParams(window.location.href));
+    } catch {
+      /* ignore */
+    }
+    void (async () => {
+      let r: CheckoutResult;
+      if (ret.state !== pending.state) {
+        r = { status: 'error', error: parseError({ error: { code: 'STATE_MISMATCH', message: 'Subscribe session state mismatch' } }) };
+      } else {
+        setStatus('subscribing');
+        try {
+          r = await finishSubscribe(pending.sessionId, pending.state);
+        } catch (err) {
+          r = { status: 'error', error: parseError(err) };
+        }
+      }
+      if (r.status === 'error') setError(r.error ?? null);
+      setStatus(r.status === 'redirecting' ? 'idle' : r.status);
+      setLastResult(r);
+    })();
+  }, [isAuthenticated, isLoading, finishSubscribe]);
+
+  return { checkout, lastResult, status, isRunning: status !== 'idle' && status !== 'success' && status !== 'error' && status !== 'cancelled', error };
 }

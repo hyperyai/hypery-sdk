@@ -46,6 +46,8 @@ interface PopupOptions {
   messageType: string;
   width?: number;
   height?: number;
+  /** Extra check on a message (and its origin) before it's accepted; rejected messages are ignored. */
+  accept?: (event: MessageEvent) => boolean;
 }
 
 export type PopupResult<T> = { blocked: true } | { blocked: false; cancelled: boolean; data?: T };
@@ -80,7 +82,7 @@ export function openPopup<T = any>(opts: PopupOptions): Promise<PopupResult<T>> 
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== opts.expectedOrigin) return;
       const data = event.data;
-      if (data && typeof data === 'object' && data.type === opts.messageType) {
+      if (data && typeof data === 'object' && data.type === opts.messageType && (!opts.accept || opts.accept(event))) {
         try {
           popup.close();
         } catch {
