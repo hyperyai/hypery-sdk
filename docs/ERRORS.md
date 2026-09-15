@@ -125,7 +125,7 @@ Mode-aware funds modal. When `error` is set it loads `GET /api/wallet/state`
 and shows:
 
 - spending limit: "Manage spending limits" (opens `settingsUrls.billing` in a new tab) and "Try again";
-- metered mode, no card, `PAYMENT_METHOD_REQUIRED` or `PAYMENT_DECLINED`: "Add / Update payment method" (Stripe-hosted setup in a popup);
+- metered or `vag_passthrough` mode, no card, `PAYMENT_METHOD_REQUIRED` or `PAYMENT_DECLINED`: "Add / Update payment method" (Stripe-hosted setup in a popup);
 - prepaid with a card: 1-click "$10 / $25 / $50" top-ups and "Other amount…" (opens `settingsUrls.topup`).
 
 After a successful top-up it shows "You're all set" with a Continue button. Renders nothing when `error` is `null`.
@@ -202,10 +202,17 @@ The props type is exported as `InsufficientCreditsAlertProps`.
 
 ## `ErrorBoundary`
 
-Picks the right inline alert for an error value. Despite the name it is not a
-React error boundary: it does not catch render errors. With no `error` it
-renders `children`; otherwise `SpendingLimitAlert`, `InsufficientCreditsAlert`
-or a generic gray alert with the message.
+A React error boundary that also displays error values.
+
+- If a child throws while rendering, it catches the error, calls `onError`, and
+  renders `fallback` (a node, or `(error, reset) => node`), or by default the
+  generic alert whose "Try again" resets the boundary (then calls `onRetry`).
+- With an `error` prop it renders `SpendingLimitAlert`, `InsufficientCreditsAlert`
+  or a generic gray alert with the message instead of `children`.
+- Otherwise it renders `children`.
+
+Like every React error boundary it does not catch errors in event handlers or
+async code — pass those to `error`.
 
 ```tsx
 import { ErrorBoundary } from '@hyperyai/sdk';
@@ -213,11 +220,17 @@ import { ErrorBoundary } from '@hyperyai/sdk';
 <ErrorBoundary error={lastError} onRetry={retry} onAddCredits={openFunds}>
   <Result />
 </ErrorBoundary>
+
+<ErrorBoundary fallback={(err, reset) => <button onClick={reset}>Retry</button>} onError={report}>
+  <Widget />
+</ErrorBoundary>
 ```
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `error` | `any` | required | Any value `parseError` accepts; falsy renders `children`. |
+| `error` | `any` | none | Any value `parseError` accepts; falsy renders `children`. |
+| `fallback` | `ReactNode \| ((error: unknown, reset: () => void) => ReactNode)` | default alert | Shown when a child throws during render. |
+| `onError` | `(error: unknown, info: ErrorInfo) => void` | none | Called when a child throws during render. |
 | `onRetry` | `() => void` | none | Retry (spending-limit and generic alerts). |
 | `onUpgradeLimits` | `() => void` | none | Spending-limit alert. |
 | `onAddCredits` | `() => void` | none | Insufficient-credits alert. |

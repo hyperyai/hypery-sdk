@@ -14,9 +14,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
+import { errorMessageFromBody, resolveGatewayUrl } from '../lib/gateway';
 
-/** How the team is billed for AI usage. */
-export type BillingMode = 'metered' | 'prepaid';
+/**
+ * How the team is billed for AI usage: `metered` (card billed for usage),
+ * `prepaid` (credit balance), or `vag_passthrough` (usage billed through the
+ * Vercel AI Gateway meter — no credit ledger).
+ */
+export type BillingMode = 'metered' | 'prepaid' | 'vag_passthrough';
 
 /** A preset top-up tier. */
 export interface WalletTier {
@@ -55,26 +60,19 @@ export interface UseWalletReturn {
   addPaymentMethod: () => Promise<boolean>;
 }
 
-function resolveGatewayUrl(explicit?: string): string {
-  return (
-    explicit ||
-    (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_GATEWAY_URL) ||
-    ''
-  );
-}
-
 /**
  * The team's AI-credit wallet with 1-click funding.
  *
- * @param opts.gatewayUrl Base URL; defaults to `NEXT_PUBLIC_GATEWAY_URL`, else a relative URL.
+ * @param opts.gatewayUrl Base URL override; defaults to the provider's `config.gatewayUrl`,
+ * then `NEXT_PUBLIC_GATEWAY_URL`, else a relative URL.
  * @example
  * ```tsx
  * const { wallet, addFunds, addPaymentMethod } = useWallet({ gatewayUrl: 'https://hypery.ai' });
  * ```
  */
 export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
-  const { isAuthenticated, getAccessToken } = useHyperyAuth();
-  const gatewayUrl = resolveGatewayUrl(opts.gatewayUrl);
+  const { isAuthenticated, getAccessToken, gatewayUrl: providerGatewayUrl } = useHyperyAuth();
+  const gatewayUrl = resolveGatewayUrl(opts.gatewayUrl, providerGatewayUrl);
 
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,7 +120,7 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body?.success) {
-        throw new Error(body?.error || `Top-up failed: ${res.status}`);
+        throw new Error(errorMessageFromBody(body, `Top-up failed: ${res.status}`));
       }
       await reload();
     },
@@ -140,7 +138,7 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body?.url) {
-      throw new Error(body?.error || `Could not start checkout: ${res.status}`);
+      throw new Error(errorMessageFromBody(body, `Could not start checkout: ${res.status}`));
     }
 
     const popup =

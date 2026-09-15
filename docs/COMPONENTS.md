@@ -16,10 +16,15 @@ Contents: [SignIn](#signin) · [SignUp](#signup) · [SignInForm](#signinform) ·
 [UserButton](#userbutton) · [UserProfile](#userprofile) · [WorkspaceSwitcher](#workspaceswitcher) ·
 [Control components](#control-components)
 
-A note on auth forms: the email/password fields in `SignInForm`, `AuthModal`
-and `ModernAuthForm` only validate input and show a "not yet supported" message.
-Real sign-in goes through the social buttons, which call `login()` (a redirect to
-Hypery's hosted login, where the user picks a provider).
+A note on auth forms: sign-in is always Hypery's hosted OAuth flow — the SDK
+never collects passwords. In `SignInForm`, `AuthModal` and `ModernAuthForm` the
+Google/GitHub buttons start login with a `provider` hint (straight to that
+identity provider), and the optional "Continue with email" button
+(`showEmailPassword`, default `false`) opens the hosted login page. The flow runs
+in a popup or a redirect per the provider's `interactionMode` (popup falls back
+to redirect when blocked). `onSuccess` fires only once the user is actually
+authenticated — after a popup login completes; with a redirect the page
+navigates away, so handle post-login on the page at `redirectUri`.
 
 ---
 
@@ -67,8 +72,8 @@ import { SignUp } from '@hyperyai/sdk';
 
 ### `SignInForm`
 
-An embedded card with GitHub/Google buttons, an email/password form and a
-"Sign up" link.
+An embedded card with GitHub/Google buttons, an optional "Continue with email"
+button and a "Sign up" link.
 
 ![SignInForm](./screenshots/signinform.png)
 
@@ -84,10 +89,10 @@ import { SignInForm } from '@hyperyai/sdk';
 | `showTitle` | `boolean` | `true` | Render title + description. |
 | `title` | `string` | `'Sign in to continue'` | Heading. |
 | `description` | `string` | `'Choose your preferred sign-in method'` | Sub-heading. |
-| `showSocial` | `boolean` | `true` | GitHub and Google buttons (both call `login()`). |
-| `showEmailPassword` | `boolean` | `true` | Email/password form (see note above). |
-| `onSuccess` | `() => void` | none | Called right after `login()` is started, i.e. before the redirect completes. |
-| `onError` | `(error: string) => void` | none | Called if starting login throws synchronously. |
+| `showSocial` | `boolean` | `true` | GitHub and Google buttons (login with a `provider` hint). |
+| `showEmailPassword` | `boolean` | `false` | "Continue with email" button that opens the hosted login page (see note above). |
+| `onSuccess` | `() => void` | none | Called once the user is signed in (see note above). |
+| `onError` | `(error: string) => void` | none | Called if starting login throws. |
 | `className` | `string` | none | Appended to the container. |
 
 ### `AuthButton`
@@ -109,9 +114,9 @@ import { AuthButton } from '@hyperyai/sdk';
 | `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Size. |
 | `className` | `string` | `''` | Appended classes. |
 | `mode` | `'signin' \| 'signup'` | `'signin'` | Initial modal mode. |
-| `onSuccess` | `() => void` | none | Called when the modal reports success (the modal also closes). |
+| `onSuccess` | `() => void` | none | Called once the user is signed in (the modal also closes). |
 | `showSocial` | `boolean` | `true` | Forwarded to the modal. |
-| `showEmailPassword` | `boolean` | `true` | Forwarded to the modal. |
+| `showEmailPassword` | `boolean` | `false` | Forwarded to the modal. |
 | `branding` | `BrandingConfig` | none | Forwarded to the modal. |
 
 The props type is exported as `AuthButtonProps`.
@@ -141,10 +146,10 @@ const [open, setOpen] = useState(false);
 | `isOpen` | `boolean` | required | Visibility. |
 | `onClose` | `() => void` | required | Called when the dialog is dismissed. |
 | `initialMode` | `'signin' \| 'signup'` | `'signin'` | Initial mode; the user can toggle. |
-| `onSuccess` | `() => void` | none | Called after `login()` resolves (which normally navigates away). |
-| `onError` | `(error: string) => void` | none | Called if `login()` throws. |
-| `showSocial` | `boolean` | `true` | Google and GitHub buttons. |
-| `showEmailPassword` | `boolean` | `false` | Email/password form (see note above). |
+| `onSuccess` | `() => void` | none | Called once the user is signed in (see note above). |
+| `onError` | `(error: string) => void` | none | Called if starting login throws. |
+| `showSocial` | `boolean` | `true` | Google and GitHub buttons (login with a `provider` hint). |
+| `showEmailPassword` | `boolean` | `false` | "Continue with email" button (hosted login page). |
 | `branding` | `BrandingConfig` | none | Logo, app name and accent color (default `#8b5cf6`). |
 
 The props type is exported as `AuthModalProps`.
@@ -152,7 +157,7 @@ The props type is exported as `AuthModalProps`.
 ### `ModernAuthForm`
 
 A full-page style auth card with mode switching and a Terms/Privacy footer
-(links to `/terms` and `/privacy`; "Forgot?" links to `/forgot-password`).
+(links to `/terms` and `/privacy`).
 
 ```tsx
 import { ModernAuthForm } from '@hyperyai/sdk';
@@ -165,10 +170,10 @@ import { ModernAuthForm } from '@hyperyai/sdk';
 | `mode` | `'signin' \| 'signup'` | `'signin'` | Initial mode. |
 | `allowModeSwitch` | `boolean` | `true` | Show the sign-in/sign-up toggle. |
 | `showCard` | `boolean` | `true` | Card wrapper. |
-| `showSocial` | `boolean` | `true` | Google and GitHub buttons. |
-| `showEmailPassword` | `boolean` | `true` | Email/password form (see note above). |
-| `onSuccess` | `() => void` | none | Called right after `login()` is started. |
-| `onError` | `(error: string) => void` | none | Called if starting login throws synchronously. |
+| `showSocial` | `boolean` | `true` | Google and GitHub buttons (login with a `provider` hint). |
+| `showEmailPassword` | `boolean` | `false` | "Continue with email" button (hosted login page). |
+| `onSuccess` | `() => void` | none | Called once the user is signed in (see note above). |
+| `onError` | `(error: string) => void` | none | Called if starting login throws. |
 | `branding` | `BrandingConfig` | none | Logo, app name, accent color. |
 | `className` | `string` | `''` | Extra classes. |
 
@@ -240,7 +245,7 @@ import { WorkspaceSwitcher } from '@hyperyai/sdk';
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
 | `onSwitched` | `(teamId: string, workspaceId: string) => void` | none | Called after a successful switch. |
-| `gatewayUrl` | `string` | `NEXT_PUBLIC_GATEWAY_URL` | Base URL for the switch request. The membership list itself always uses `NEXT_PUBLIC_GATEWAY_URL` (or a relative URL). |
+| `gatewayUrl` | `string` | provider `gatewayUrl` | Base URL for both the membership list and the switch request. Falls back to the provider's `config.gatewayUrl`, then `NEXT_PUBLIC_GATEWAY_URL`, then a relative URL. |
 | `className` | `string` | `''` | Appended to the trigger button. |
 | `ariaLabel` | `string` | `'Switch workspace'` | Trigger `aria-label`. |
 
@@ -283,7 +288,8 @@ import { SignedIn, SignedOut, Protect, RedirectToSignIn } from '@hyperyai/sdk';
 ### `RedirectToSignIn`
 
 No props. Once loading has finished and the user is not authenticated, calls
-`login()` (a redirect). Renders nothing.
+`login()` (a redirect) from an effect — never during render — and only once per
+mount (safe under React StrictMode). Renders nothing.
 
 ### `Protect`
 
@@ -291,10 +297,12 @@ No props. Once loading has finished and the user is not authenticated, calls
 | --- | --- | --- |
 | `children` | `ReactNode` | Rendered when authenticated. |
 | `fallback` | `ReactNode` | Rendered while loading, while logging out, and when signed out. |
-| `onUnauthenticated` | `() => void` | When signed out, called instead of rendering `fallback` or redirecting. |
+| `onUnauthenticated` | `() => void` | When signed out, called (and nothing is rendered) instead of rendering `fallback` or redirecting. |
 
 When signed out with neither `fallback` nor `onUnauthenticated`, `Protect` calls
-`login()`. It has no scope/permission prop.
+`login()`. Both `onUnauthenticated` and `login()` run from an effect after auth
+has finished loading — never during render — once per mount (StrictMode-safe).
+It has no scope/permission prop.
 
 ---
 
