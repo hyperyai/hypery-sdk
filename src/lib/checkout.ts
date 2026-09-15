@@ -235,3 +235,13 @@ export function subscribeOutcome(
   }
   return { status: 'cancelled' };
 }
+
+/**
+ * Whether checkout() should pre-open the subscribe popup synchronously: only
+ * for subscriptions in popup mode when no login popup comes first (a login
+ * popup uses the gesture; the subscribe popup then opens normally, falling back
+ * to redirect if blocked).
+ */
+export function subscribePreopenNeeded(kind: CheckoutInput['kind'], mode: 'popup' | 'redirect', isAuthenticated: boolean): boolean {
+  return kind === 'subscription' && mode === 'popup' && isAuthenticated;
+}

@@ -23,13 +23,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
-import { openPopup } from '../lib/popup';
+import { closePopup, openBlankPopup, openPopup } from '../lib/popup';
 import { parseError } from '../lib/parse-error';
 import type { ParsedError } from '../types';
 import {
   CHECKOUT_ENDPOINTS as ENDPOINTS,
   chargeBody,
   isValidSubscribeMessage,
+  subscribePreopenNeeded,
   needsCard,
   newSubscribeState,
   parseSubscribeReturn,
@@ -48,6 +49,7 @@ export type { CheckoutInput, SubscribeSessionResult } from '../lib/checkout';
 const PENDING_KEY = 'hypery_pending_checkout';
 const MAX_ATTEMPTS = 3; // auth redirect + card redirect + margin; guards against loops
 const CARD_POPUP_NAME = 'hypery-add-card';
+const SUBSCRIBE_POPUP_NAME = 'hypery-subscribe';
 const SUBSCRIBE_PENDING_KEY = 'hypery_pending_subscribe';
 
 /** Current step of the checkout flow. */
@@ -242,24 +244,39 @@ export function useCheckout(): UseCheckoutReturn {
 
   /** Hosted subscribe page in a popup; falls back to redirect when blocked. */
   const runSubscribe = useCallback(
-    async (input: Extract<CheckoutInput, { kind: 'subscription' }>): Promise<CheckoutResult> => {
+    async (
+      input: Extract<CheckoutInput, { kind: 'subscription' }>,
+      preopened: Window | null | undefined,
+    ): Promise<CheckoutResult> => {
       setStatus('subscribing');
-      if (interactionMode !== 'popup') {
+      // Redirect mode, or the synchronously pre-opened window was blocked (null).
+      if (interactionMode !== 'popup' || preopened === null || preopened?.closed) {
+        closePopup(preopened);
         setStatus('redirecting');
         return subscribeRedirect(input);
       }
       const state = newSubscribeState();
-      const { res, body } = await authedFetch(
-        SUBSCRIBE_SESSIONS_PATH,
-        subscribeSessionBody(input, { state, mode: 'popup', redirectUri }),
-      );
+      let res: Response;
+      let body: any;
+      try {
+        ({ res, body } = await authedFetch(
+          SUBSCRIBE_SESSIONS_PATH,
+          subscribeSessionBody(input, { state, mode: 'popup', redirectUri }),
+        ));
+      } catch (err) {
+        closePopup(preopened);
+        throw err;
+      }
       if (!res.ok || !body?.url || !body?.sessionId) {
+        closePopup(preopened);
         return { status: 'error', error: parseError({ ...body, status: res.status }), data: body };
       }
       const sessionId: string = body.sessionId;
+      if (preopened?.closed) return { status: 'cancelled' }; // user closed the loading window
       const popup = await openPopup({
+        existing: preopened,
         url: body.url,
-        name: 'hypery-subscribe',
+        name: SUBSCRIBE_POPUP_NAME,
         expectedOrigin: gatewayOrigin,
         messageType: SUBSCRIBE_MESSAGE_TYPE,
         width: 480,
@@ -319,6 +336,11 @@ export function useCheckout(): UseCheckoutReturn {
       runningRef.current = true;
       setError(null);
       const input = withIdempotency(rawInput);
+      // Pre-open the subscribe popup synchronously (still inside the user gesture)
+      // when no login step comes first; null means the browser blocked it.
+      const preopened: Window | null | undefined = subscribePreopenNeeded(input.kind, interactionMode, isAuthenticated)
+        ? openBlankPopup(SUBSCRIBE_POPUP_NAME, 480, 760)
+        : undefined;
 
       try {
         // 1) Ensure authentication.
@@ -327,6 +349,7 @@ export function useCheckout(): UseCheckoutReturn {
           if (interactionMode === 'popup') {
             const r = await loginPopup();
             if (r.cancelled) {
+              closePopup(preopened);
               setStatus('cancelled');
               return { status: 'cancelled' };
             }
@@ -350,7 +373,7 @@ export function useCheckout(): UseCheckoutReturn {
         // 2a) Subscriptions run on Hypery's hosted subscribe page.
         if (input.kind === 'subscription') {
           clearPending();
-          const r = await runSubscribe(input);
+          const r = await runSubscribe(input, preopened);
           if (r.status === 'error') setError(r.error ?? null);
           setStatus(r.status);
           if (r.status !== 'redirecting') setLastResult(r);
@@ -405,6 +428,7 @@ export function useCheckout(): UseCheckoutReturn {
         setStatus('error');
         return { status: 'error', error: fail };
       } catch (err: any) {
+        closePopup(preopened);
         const parsed = parseError(err);
         clearPending();
         setError(parsed);

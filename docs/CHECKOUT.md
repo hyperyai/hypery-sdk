@@ -49,7 +49,11 @@ After making sure the user is logged in, `kind: 'subscription'`:
 2. Opens the returned `url`. On that page the user picks the **team** that owns
    the subscription, the card and the interval (your `interval` is only the
    preselection).
-   - popup (`hypery-subscribe`, 480x760): only a `hypery:subscribe` message
+   - popup (`hypery-subscribe`, 480x760): when the user is already logged in the
+     window is opened synchronously in the click (showing "Loading…") and pointed
+     at the session once it's created, so popup blockers allow it; it is closed if
+     session creation fails. If login comes first, the subscribe popup opens after
+     the login popup. Only a `hypery:subscribe` message
      from the gateway origin with the matching `sessionId` and `state` is accepted.
      Closing the popup returns `cancelled`.
    - redirect (or a blocked popup): `{ sessionId, state, input }` is saved in
