@@ -136,6 +136,8 @@ The main provider component. Wrap your app with this.
     gatewayUrl: string;         // Hypery API URL
     scopes?: string[];          // OAuth scopes (default: ['read', 'write'])
     storage?: 'localStorage' | 'sessionStorage' | 'memory'; // Storage type
+    postLogoutRedirect?: string | false | null | (() => string | false | null | void);
+                                // Where logout() goes (default: '/')
   }}
 >
   {children}
@@ -299,6 +301,35 @@ const auth = useHyperyAuth();
   }}
 >
 ```
+
+### Where sign-out lands (`postLogoutRedirect`)
+
+`logout()` revokes the token, clears local state, sets the force-reauth flag and
+then navigates to `/` by default. `/` is the wrong place for apps whose root is a
+marketing page — and for a desktop shell, where it must never be rendered at all.
+Configure the destination instead:
+
+```tsx
+<HyperyProvider
+  config={{
+    // ...other config
+    postLogoutRedirect: '/home',              // land on the app, not marketing
+    // postLogoutRedirect: false,             // don't navigate — you route it
+    // postLogoutRedirect: () => isDesktop() ? false : '/home',  // decide at logout time
+  }}
+>
+```
+
+- **string** — navigate there (default `'/'`, so existing apps are unchanged).
+- **`false` / `null` / `''`** — clear the session and stay put; the app decides
+  (a router push, a desktop tab switch, …).
+- **function** — evaluated at logout time; return a URL, or `false`/`null`/nothing
+  to suppress the navigation. A throwing callback suppresses it too and never
+  fails the logout.
+
+The revoke → clear → force-reauth sequence is identical in every case; only the
+final navigation changes. The resolver is exported as
+`resolvePostLogoutRedirect()` if you want to reuse the same rules.
 
 ### Manual token management
 

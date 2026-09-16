@@ -28,6 +28,7 @@ import {
   refreshAccessToken,
   getUserInfo,
 } from './oauth';
+import { resolvePostLogoutRedirect } from './logout-redirect';
 import { parseError } from './parse-error';
 import { openPopup, resolveInteractionMode } from './popup';
 import { TokenStorage } from './storage';
@@ -296,55 +297,50 @@ export function HyperyProvider({
    * Logout and clear session
    */
   const logout = useCallback(async () => {
-    console.log('🚪 [AUTH] Logout initiated');
-    
     // Set logging out flag to prevent Protect components from triggering login
     setIsLoggingOut(true);
-    
+
     // Get the current access token before clearing
     const tokens = storage.getTokens();
-    console.log('🔑 [AUTH] Found tokens:', tokens ? 'yes' : 'no');
-    
+
     // Revoke the OAuth token on the server
     if (tokens?.accessToken) {
       try {
-        console.log('📡 [AUTH] Calling revoke endpoint:', `${config.gatewayUrl}/api/oauth/revoke`);
-        const response = await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
+        await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: tokens.accessToken }),
         });
-        console.log('✅ [AUTH] OAuth token revoked on server, status:', response.status);
       } catch (err) {
-        console.error('❌ [AUTH] Failed to revoke token on server:', err);
+        console.error('Failed to revoke token on server:', err);
         // Continue with logout even if revocation fails
       }
-    } else {
-      console.log('⚠️ [AUTH] No access token found to revoke');
     }
-    
+
     // Clear local storage
-    console.log('🧹 [AUTH] Clearing local storage');
     storage.clear();
     setUser(null);
     setError(null);
-    
+
     // Also clear OAuth verifier if it exists
     if (typeof window !== 'undefined') {
       const storageInstance = config.storage === 'sessionStorage' ? sessionStorage : localStorage;
       storageInstance.removeItem('hypery_oauth_verifier');
-      
+
       // Set flag to force account selection on next login
       // This prevents auto-login after logout
       localStorage.setItem('hypery_force_reauth', 'true');
-      console.log('✅ [AUTH] Set force reauth flag');
-      
-      // Redirect to local landing page
-      // Note: This only logs out of THIS app, not the OAuth provider or other apps
-      console.log('🔄 [AUTH] Redirecting to /');
-      window.location.replace('/');
+
+      // Navigate to the configured post-logout destination (default '/').
+      // `postLogoutRedirect: false` (or a callback returning nothing) means the
+      // app routes itself — e.g. a desktop shell where '/' is a marketing page.
+      // Note: this only logs out of THIS app, not the OAuth provider.
+      const destination = resolvePostLogoutRedirect(config.postLogoutRedirect);
+      if (destination !== null) {
+        window.location.replace(destination);
+      }
     }
-  }, [config.storage, config.gatewayUrl, storage]);
+  }, [config.storage, config.gatewayUrl, config.postLogoutRedirect, storage]);
 
   /**
    * Manually refresh auth state
