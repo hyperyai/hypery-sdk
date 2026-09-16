@@ -28,6 +28,11 @@ export type CheckoutInput =
       planId: string;
       /** Interval preselected on the hosted subscribe page (the user can change it there). */
       interval?: PlanInterval;
+      /**
+       * Lock the hosted subscribe page to this Hypery team (24-hex id), e.g. the
+       * team selected in your app's team switcher. Omit to let the user pick.
+       */
+      teamId?: string;
       /** @deprecated Ignored: the hosted subscribe page is idempotent per session. */
       idempotencyKey?: string;
     };
@@ -128,17 +133,28 @@ export function originOf(url: string): string | null {
   }
 }
 
+/** True for a Hypery team id (24 hex characters). */
+export function isTeamId(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{24}$/i.test(value);
+}
+
 /**
  * Body for POST /api/marketplace/subscribe-sessions. Popup mode sends
  * `returnOrigin` (the origin of the configured redirectUri, which the gateway
  * requires to be a registered redirect URI origin); redirect mode sends `returnUrl`.
  */
 export function subscribeSessionBody(
-  input: { planId: string; interval?: PlanInterval },
+  input: { planId: string; interval?: PlanInterval; teamId?: string },
   opts: { state: string } & ({ mode: 'popup'; redirectUri: string } | { mode: 'redirect'; returnUrl: string }),
 ): Record<string, unknown> {
   const body: Record<string, unknown> = { planId: input.planId, state: opts.state };
   if (input.interval) body.interval = input.interval;
+  if (input.teamId !== undefined) {
+    if (!isTeamId(input.teamId)) {
+      throw new Error(`Invalid teamId "${input.teamId}": expected a 24-character hex Hypery team id`);
+    }
+    body.teamId = input.teamId;
+  }
   if (opts.mode === 'popup') {
     const origin = originOf(opts.redirectUri);
     if (!origin) throw new Error('config.redirectUri must be an absolute URL to open the subscribe popup');

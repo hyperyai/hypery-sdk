@@ -62,7 +62,7 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 
 | Type | Description | Details |
 | --- | --- | --- |
-| `CheckoutInput` | `purchase` / `topup` / `subscription` union. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
+| `CheckoutInput` | `purchase` / `topup` / `subscription` union (`subscription` accepts `teamId?`). | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
 | `SubscribeSessionResult` | Authoritative hosted subscribe session outcome (`status`, `state`, `team`, `subscription`). | [CHECKOUT.md](./CHECKOUT.md#subscriptions-hosted-subscribe-page) |
 | `CheckoutStatus` | Flow status string union. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
 | `CheckoutResult` | `{ status, data?, error? }`. | [CHECKOUT.md](./CHECKOUT.md#usecheckout) |
@@ -81,9 +81,10 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | `AppPlan` | A plan of your app. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 | `AppPlanPrice` | `{ interval, priceCents }`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 | `AppPlanGrant` | Credit grant configured on a plan. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
-| `AppSubscription` | A user's subscription with grant balances. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
+| `AppSubscription` | A user's subscription with grant balances and owning `team: { id, name, slug } \| null`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 | `AppSubscriptionGrantBalance` | `{ type, amountUsd, remainingUsd, expiresAt }`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 | `SwitchIntervalResult` | Result of `switchInterval`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
+| `UseAppSubscriptionOptions` | `{ teamId?: string }` for `useAppSubscription`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 | `UseAppSubscriptionReturn` | Return of `useAppSubscription`. | [CHECKOUT.md](./CHECKOUT.md#useappsubscription) |
 
 ## Errors

@@ -76,4 +76,5 @@ export type {
   AppSubscription,
   AppSubscriptionGrantBalance,
   UseAppSubscriptionReturn,
+  UseAppSubscriptionOptions,
 } from './useAppSubscription';

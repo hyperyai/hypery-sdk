@@ -61,6 +61,7 @@ export type {
   AppSubscription,
   AppSubscriptionGrantBalance,
   UseAppSubscriptionReturn,
+  UseAppSubscriptionOptions,
 } from './hooks';
 
 // Auth Components
