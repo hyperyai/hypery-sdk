@@ -16,6 +16,7 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | `AuthContextValue` | Value returned by `useAuth()` / `useHyperyAuth()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `AuthState` | `{ user, isAuthenticated, isLoading, error, isLoggingOut? }` (base of `AuthContextValue`). | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `PopupAuthResult` | `{ ok, blocked, cancelled }` from `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#popupauthresult) |
+| `PostLogoutRedirect` | `string \| false \| null \| (() => string \| false \| null \| void)` — where `logout()` goes. | [PROVIDER.md](./PROVIDER.md#postlogoutredirect) |
 | `LoginOptions` | `{ provider?: 'google' \| 'github' }` for `login()` / `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `User` | `{ id, email, name, image? }`. | [HOOKS.md](./HOOKS.md#useuser) |
 | `AuthTokens` | `{ accessToken, refreshToken, expiresIn, tokenType }`. | [ADVANCED.md](./ADVANCED.md) |
