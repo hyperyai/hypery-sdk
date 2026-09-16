@@ -31,6 +31,7 @@ import {
   clearOAuthTransaction,
   verifyOAuthState,
 } from './oauth';
+import { resolvePostLogoutRedirect } from './logout-redirect';
 import { parseError } from './parse-error';
 import { openPopup, resolveInteractionMode } from './popup';
 import { TokenStorage } from './storage';
@@ -347,11 +348,16 @@ export function HyperyProvider({
       // This prevents auto-login after logout
       localStorage.setItem('hypery_force_reauth', 'true');
 
-      // Redirect to local landing page
-      // Note: This only logs out of THIS app, not the OAuth provider or other apps
-      window.location.replace('/');
+      // Navigate to the configured post-logout destination (default '/').
+      // `postLogoutRedirect: false` (or a callback returning nothing) means the
+      // app routes itself — e.g. a desktop shell where '/' is a marketing page.
+      // Note: this only logs out of THIS app, not the OAuth provider.
+      const destination = resolvePostLogoutRedirect(config.postLogoutRedirect);
+      if (destination !== null) {
+        window.location.replace(destination);
+      }
     }
-  }, [config.storage, config.gatewayUrl, storage]);
+  }, [config.storage, config.gatewayUrl, config.postLogoutRedirect, storage]);
 
   /**
    * Manually refresh auth state

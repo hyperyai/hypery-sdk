@@ -61,6 +61,7 @@ The callback/session effect depends on the `config` identity.
 | `interactionMode` | `InteractionMode` | `'auto'` | How interactive auth / card-entry steps are shown in the checkout flow. See below. |
 | `onUnauthorized` | `() => void` | none | Called when an `authenticatedFetch` request is still `401` after one forced token refresh. `authRequired` is set on the context either way. |
 | `onRestricted` | `(error: ParsedError) => void` | none | Called when an `authenticatedFetch` response is `402` or `429` with a JSON body. `restriction` is set on the context either way. |
+| `postLogoutRedirect` | `PostLogoutRedirect` | `'/'` | Where `logout()` navigates once the session is revoked and cleared. See below. |
 
 ### `InteractionMode` and `ResolvedMode`
 
@@ -73,6 +74,33 @@ The callback/session effect depends on the `config` identity.
 The context exposes the resolved value (`ResolvedMode`, `'popup' | 'redirect'`)
 as `useAuth().interactionMode`. Even in popup mode, a blocked popup falls back to
 a redirect.
+
+### `PostLogoutRedirect`
+
+Where `logout()` sends the browser after the revoke → clear → force-reauth
+sequence, which is otherwise unchanged. `'/'` is the wrong destination for an app
+whose root is a marketing page, and for a desktop shell where it must not render
+at all.
+
+| Value | Behaviour |
+| --- | --- |
+| a non-empty `string` | Navigate there (`window.location.replace`). |
+| `false`, `null` or `''` | Don't navigate; the session is cleared and your app routes itself. |
+| `() => string \| false \| null \| void` | Called at logout time; its return value follows the rules above, so the destination can depend on runtime context. Returning nothing suppresses the navigation; a callback that throws suppresses it too and never fails the logout. |
+
+```tsx
+<HyperyProvider
+  config={{
+    // ...
+    postLogoutRedirect: '/home',
+    // or: postLogoutRedirect: () => (isDesktop() ? false : '/home'),
+  }}
+>
+```
+
+`resolvePostLogoutRedirect` applies these rules (call it as `resolvePostLogoutRedirect(option)`) (returning the URL, or
+`null` for "don't navigate") and is exported for apps that want to reuse them;
+`DEFAULT_POST_LOGOUT_REDIRECT` is the `'/'` default.
 
 ### `BrandingConfig`
 
@@ -99,7 +127,7 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 | `login` | `(options?: LoginOptions) => Promise<void>` | Redirects to the Hypery authorize page. `options.provider` (`'google' \| 'github'`) skips the hosted login page. After a `logout()` it adds `prompt=select_account` once. |
 | `loginPopup` | `(options?: LoginOptions) => Promise<PopupAuthResult>` | Log in via popup. Resolves `{ ok, blocked, cancelled }`. |
 | `signUp` | `() => Promise<void>` | Same as `login` but always with `prompt=select_account`. |
-| `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then `window.location.replace('/')`. |
+| `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then navigates to `postLogoutRedirect` (`'/'` by default). |
 | `refreshAuth` | `() => Promise<void>` | Reloads the user from the gateway. |
 | `getAccessToken` | `(forceRefresh?: boolean) => Promise<string \| null>` | Valid access token, refreshing when expired or forced. Concurrent refreshes share one request. On refresh failure storage is cleared and it returns `null`. |
 | `authenticatedFetch` | `(input, init?) => Promise<Response>` | `fetch` with the bearer token. `401` triggers one forced refresh and retry, then sets `authRequired`; `402`/`429` sets `restriction`. Always returns the `Response`. |

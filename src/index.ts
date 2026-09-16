@@ -119,6 +119,7 @@ export type {
   ResolvedMode,
   PopupAuthResult,
   LoginOptions,
+  PostLogoutRedirect,
   User,
   AuthTokens,
   AuthState,
@@ -135,6 +136,10 @@ export type {
 } from './types';
 
 // Utilities (for advanced usage)
+export {
+  resolvePostLogoutRedirect,
+  DEFAULT_POST_LOGOUT_REDIRECT,
+} from './lib/logout-redirect';
 export { TokenStorage } from './lib/storage';
 export {
   getAuthorizationUrl,

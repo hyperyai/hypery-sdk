@@ -41,6 +41,23 @@ export interface BrandingConfig {
 }
 
 /**
+ * Where `logout()` sends the browser after the session is revoked and cleared.
+ *
+ *   - a URL/path string — navigate there (default: `'/'`)
+ *   - `false` or `null` — don't navigate at all; the session is cleared and the
+ *     app decides what to do (a router push, or a desktop shell where `'/'` is
+ *     not a meaningful route)
+ *   - a function — called at logout time; return a URL to navigate there, or
+ *     `false`/`null`/nothing to suppress the navigation (useful when the
+ *     destination depends on runtime context, e.g. web vs desktop)
+ */
+export type PostLogoutRedirect =
+  | string
+  | false
+  | null
+  | (() => string | false | null | void);
+
+/**
  * Configuration for `<HyperyProvider config={...}>`.
  * @see docs/PROVIDER.md
  */
@@ -78,6 +95,21 @@ export interface HyperyAuthConfig {
    * `restriction` is set so `<HyperyModals>` can auto-open the funds modal.
    */
   onRestricted?: (error: ParsedError) => void;
+  /**
+   * Where {@link AuthContextValue.logout} navigates once the token is revoked
+   * and local state cleared. Defaults to `'/'` (the historical behaviour).
+   * Pass `false` to stay put and route yourself — the revoke → clear →
+   * force-reauth-flag sequence is unchanged either way.
+   *
+   * @example
+   * ```tsx
+   * // land on the app, not the marketing root
+   * postLogoutRedirect: '/home'
+   * // or: decide at logout time / suppress navigation entirely
+   * postLogoutRedirect: () => (isDesktop() ? false : '/home')
+   * ```
+   */
+  postLogoutRedirect?: PostLogoutRedirect;
 }
 
 /** The signed-in Hypery user (from `GET /api/user/me`). */
