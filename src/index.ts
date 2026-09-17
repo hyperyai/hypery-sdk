@@ -146,6 +146,8 @@ export {
   exchangeCodeForToken,
   refreshAccessToken,
   getUserInfo,
+  AuthError,
+  isCredentialFailure,
 } from './lib/oauth';
 
 // Error Utilities

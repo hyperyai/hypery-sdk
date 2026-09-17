@@ -99,11 +99,45 @@ const next = await refreshAccessToken(tokens.refreshToken, { clientId, gatewayUr
 
 `getUserInfo(accessToken, gatewayUrl): Promise<{ id: string; email: string; name: string; image?: string }>`
 
-`GET {gatewayUrl}/api/user/me` with the bearer token. Throws
-`Failed to fetch user info` on a non-2xx response.
+`GET {gatewayUrl}/api/user/me` with the bearer token. Throws an
+[`AuthError`](#autherror) on a non-2xx response.
 
 ```ts
 const user = await getUserInfo(tokens.accessToken, gatewayUrl);
 ```
 
 `AuthTokens`: `{ accessToken, refreshToken, expiresIn, tokenType }` (`expiresIn` in seconds).
+
+### `AuthError`
+
+`class AuthError extends Error { status: number; code?: string; isCredentialFailure: boolean }`
+
+Thrown by `exchangeCodeForToken`, `refreshAccessToken` and `getUserInfo` when the gateway **answered** with a
+non-2xx. `status` is the HTTP status; `code` is the OAuth error code when the body carried one (e.g.
+`invalid_grant`).
+
+A request that never reached the gateway — offline, DNS, TLS, a connection reset — rejects with whatever
+`fetch` threw (usually a `TypeError`) and is deliberately *not* an `AuthError`.
+
+### `isCredentialFailure`
+
+`isCredentialFailure(err: unknown): boolean`
+
+True only when the server rejected the credentials themselves: a 400/401/403, or an `invalid_grant` /
+`invalid_token` / `unauthorized_client` code. False for 5xx, 429, and every network failure.
+
+Use it to decide whether to discard a session. Clearing tokens on any failure signs people out whenever the
+network hiccups or the gateway has a bad minute:
+
+```ts
+try {
+  const tokens = await refreshAccessToken(refreshToken, { clientId, gatewayUrl });
+  storage.saveTokens(tokens);
+} catch (err) {
+  if (isCredentialFailure(err)) storage.clear(); // genuinely revoked — sign out
+  else /* transient: keep the session and try again later */;
+}
+```
+
+The provider applies exactly this rule internally, so `HyperyProvider` keeps a session across an offline
+page load or a gateway blip, and only signs out when the gateway says the credentials are dead.

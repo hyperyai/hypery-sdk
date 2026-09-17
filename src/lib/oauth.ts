@@ -155,6 +155,51 @@ export async function getAuthorizationUrl(config: {
 }
 
 /**
+ * A failure the gateway *answered* — it responded, and the response says this token or grant is no good.
+ *
+ * The distinction matters: a caller may only discard a session when the server actually rejected it. A fetch
+ * that rejects (offline, DNS, TLS, connection reset) or a 5xx never produces one of these, because none of
+ * those tell us anything about whether the credentials are still valid.
+ */
+export class AuthError extends Error {
+  readonly status: number;
+  /** The OAuth error code when the body carried one, e.g. `invalid_grant`. */
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'AuthError';
+    this.status = status;
+    this.code = code;
+  }
+
+  /**
+   * True when the server rejected the credentials themselves, so retrying with the same ones is pointless
+   * and clearing them is correct. 4xx only — a 500/502/503 is the gateway failing, not the token.
+   * `invalid_grant` is the OAuth code for a refresh token that is expired, revoked or already used.
+   */
+  get isCredentialFailure(): boolean {
+    if (this.code === 'invalid_grant' || this.code === 'invalid_token' || this.code === 'unauthorized_client') return true;
+    return this.status === 400 || this.status === 401 || this.status === 403;
+  }
+}
+
+/** Did the server reject our credentials? False for network failures, 5xx, and anything else. */
+export function isCredentialFailure(err: unknown): boolean {
+  return err instanceof AuthError && err.isCredentialFailure;
+}
+
+/** Read an OAuth error body without letting a non-JSON response (an HTML 502 page) mask the status. */
+async function readOAuthError(response: Response): Promise<{ message?: string; code?: string }> {
+  try {
+    const body = await response.json();
+    return { message: body?.error_description || body?.error, code: typeof body?.error === 'string' ? body.error : undefined };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Exchange an authorization code for tokens using the stored PKCE verifier.
  * When `config.state` is passed (the `state` returned on the callback) it is
  * verified against the stored one first; a mismatch throws before any request.
@@ -197,10 +242,8 @@ export async function exchangeCodeForToken(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      error.error_description || error.error || 'Failed to exchange code for token'
-    );
+    const { message, code } = await readOAuthError(response);
+    throw new AuthError(message || 'Failed to exchange code for token', response.status, code);
   }
 
   // Clear the one-time transaction
@@ -239,10 +282,8 @@ export async function refreshAccessToken(
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      error.error_description || error.error || 'Failed to refresh token'
-    );
+    const { message, code } = await readOAuthError(response);
+    throw new AuthError(message || 'Failed to refresh token', response.status, code);
   }
 
   const data = await response.json();
@@ -269,7 +310,7 @@ export async function getUserInfo(
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch user info');
+    throw new AuthError('Failed to fetch user info', response.status);
   }
 
   return response.json();
