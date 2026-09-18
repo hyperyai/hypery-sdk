@@ -30,6 +30,7 @@ import {
   getUserInfo,
   clearOAuthTransaction,
   verifyOAuthState,
+  isCredentialFailure,
 } from './oauth';
 import { resolvePostLogoutRedirect } from './logout-redirect';
 import { parseError } from './parse-error';
@@ -113,9 +114,17 @@ export function HyperyProvider({
             storage.saveTokens(newTokens);
             return newTokens.accessToken;
           } catch (err) {
-            console.error('Failed to refresh token:', err);
-            storage.clear();
-            setUser(null);
+            // Only a server that actually rejected the grant may end the session. A refresh that fails
+            // because the device is offline, DNS is down or the gateway returned a 5xx says nothing about
+            // whether the refresh token is still good — discarding it there signs people out at random and
+            // makes them log in again for a blip they never saw.
+            if (isCredentialFailure(err)) {
+              console.error('Refresh token rejected; signing out:', err);
+              storage.clear();
+              setUser(null);
+            } else {
+              console.warn('Token refresh failed transiently; keeping the session:', err);
+            }
             return null;
           } finally {
             refreshInFlight.current = null;
@@ -199,10 +208,18 @@ export function HyperyProvider({
       storage.saveUser(userInfo);
       setUser(userInfo);
     } catch (err) {
-      console.error('Failed to load user:', err);
       setError(err instanceof Error ? err.message : 'Failed to load user');
-      storage.clear();
-      setUser(null);
+      if (isCredentialFailure(err)) {
+        console.error('Session rejected while loading the user; signing out:', err);
+        storage.clear();
+        setUser(null);
+      } else {
+        // Transient: the gateway is unreachable or erroring. Keep the tokens and fall back to the user we
+        // already know about, so a flaky network (or a page opened offline) does not look like a sign-out.
+        console.warn('Could not load the user; keeping the session:', err);
+        const cached = storage.getUser();
+        if (cached) setUser(cached);
+      }
     } finally {
       setIsLoading(false);
     }
