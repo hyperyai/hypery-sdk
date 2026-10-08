@@ -27,6 +27,7 @@ import {
   getAuthorizationUrl,
   exchangeCodeForToken,
   refreshAccessToken,
+  revokeTokens,
   getUserInfo,
   clearOAuthTransaction,
   verifyOAuthState,
@@ -321,18 +322,9 @@ export function HyperyProvider({
     // Get the current access token before clearing
     const tokens = storage.getTokens();
 
-    // Revoke the OAuth token on the server
-    if (tokens?.accessToken) {
-      try {
-        await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: tokens.accessToken }),
-        });
-      } catch (err) {
-        console.error('Failed to revoke token on server:', err);
-        // Continue with logout even if revocation fails
-      }
+    // Revoke the OAuth token family on the server (continues even if it fails)
+    if (tokens) {
+      await revokeTokens(tokens, { clientId: config.clientId, gatewayUrl: config.gatewayUrl });
     }
 
     // Clear local storage

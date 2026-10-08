@@ -256,6 +256,38 @@ export async function refreshAccessToken(
 }
 
 /**
+ * Revoke this session's tokens (RFC 7009) on logout. Sends the refresh token when
+ * there is one, which revokes the whole token family (every access token minted
+ * from it), else the access token. `client_id` is required by the gateway; a
+ * public PKCE client sends no secret. Never throws — logout continues regardless.
+ */
+export async function revokeTokens(
+  tokens: { accessToken?: string; refreshToken?: string },
+  config: {
+    clientId: string;
+    gatewayUrl: string;
+  }
+): Promise<boolean> {
+  const token = tokens.refreshToken || tokens.accessToken;
+  if (!token) return false;
+  try {
+    const response = await fetch(`${config.gatewayUrl}/api/oauth/revoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        token_type_hint: tokens.refreshToken ? 'refresh_token' : 'access_token',
+        client_id: config.clientId,
+      }),
+    });
+    return response.ok;
+  } catch (err) {
+    console.error('Failed to revoke token on server:', err);
+    return false;
+  }
+}
+
+/**
  * Fetch the signed-in user (`GET {gatewayUrl}/api/user/me`). Throws on a non-2xx response.
  */
 export async function getUserInfo(
