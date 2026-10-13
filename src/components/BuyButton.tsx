@@ -15,6 +15,8 @@ import { useState } from "react";
 import { type BuySuccess } from "../hooks/useMarketplace.js";
 import { useCheckout } from "../hooks/useCheckout.js";
 import type { BrandingConfig, ParsedError } from "../types/index.js";
+import { cn } from "../lib/utils.js";
+import { ROOT, Spinner, brandStyle, buttonSizes, buttonVariants } from "./ui/primitives.js";
 
 /** Props of {@link BuyButton}. */
 export interface BuyButtonProps {
@@ -103,8 +105,6 @@ export function BuyButton({
     void charge();
   };
 
-  const primaryColor = branding?.primaryColor;
-  const style = primaryColor ? { backgroundColor: primaryColor } : undefined;
 
   const idleLabel = label ?? `Buy · ${formatUsd(amountCents)}`;
   const buttonLabel = busy
@@ -114,34 +114,21 @@ export function BuyButton({
       : idleLabel;
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className={cn(ROOT, "hy:inline-flex hy:items-center hy:gap-2")} style={brandStyle(branding?.primaryColor)}>
       <button
         type="button"
         onClick={handleClick}
         disabled={busy}
-        style={style}
-        className={`
-        inline-flex items-center justify-center gap-2
-        px-6 py-2.5 text-base rounded-lg font-medium transition-all
-        text-white shadow-md hover:shadow-lg
-        ${primaryColor ? "" : "bg-purple-600 hover:bg-purple-700"}
-        disabled:opacity-60 disabled:cursor-not-allowed
-        ${className}
-      `}
+        className={cn(buttonVariants.primary, buttonSizes.lg, className)}
       >
-        {busy && (
-          <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-            aria-hidden="true"
-          />
-        )}
+        {busy && <Spinner />}
         {buttonLabel}
       </button>
       {armed && !busy && (
         <button
           type="button"
           onClick={() => setArmed(false)}
-          className="px-3 py-2.5 text-sm rounded-lg font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+          className={cn(buttonVariants.ghost, buttonSizes.lg)}
         >
           Cancel
         </button>

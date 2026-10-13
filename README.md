@@ -96,6 +96,35 @@ import { BuyButton, SubscribeButton } from '@hyperyai/sdk';
 
 Add `billing:charge` to `config.scopes` for checkout.
 
+## Styling
+
+The UI components ship their own stylesheet. Import it once, at your app's root:
+
+```ts
+import '@hyperyai/sdk/styles.css';
+```
+
+It is built with Tailwind 4, but your app doesn't need Tailwind (or any particular version of it): every class is
+prefixed `hy:`, there is no global reset, and only elements inside a component's `.hypery` root are styled.
+
+**Theming.** Components read Hypery's design tokens as `--hy-*` CSS variables. Override any of them to brand:
+
+```css
+.hypery {
+  --hy-primary: oklch(0.55 0.2 290);   /* buttons, links, focus ring */
+  --hy-primary-foreground: white;
+  --hy-ring: oklch(0.55 0.2 290);
+  --hy-radius: 0.75rem;
+}
+```
+
+`branding.primaryColor` on `AuthModal`, `ModernAuthForm`, `AuthButton`, `BuyButton` and `SubscribeButton` sets
+`--hy-primary` for that component only. The full token list is at the top of `src/styles.css`.
+
+**Dark mode.** Components switch to the dark tokens under a `.dark` ancestor (the `class` strategy used by
+next-themes and Tailwind), on `.hypery.dark`, or from the OS preference. If your app has its own light/dark switch,
+put `class="light"` (or `data-theme="light"`) on `<html>` in light mode so the OS preference doesn't override it.
+
 ## Documentation
 
 | Guide | Covers |

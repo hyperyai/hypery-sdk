@@ -28,6 +28,9 @@ navigates away, so handle post-login on the page at `redirectUri`.
 
 ---
 
+> Import the stylesheet once: `import '@hyperyai/sdk/styles.css'`. Theme with `--hy-*` CSS variables and dark mode
+> via a `.dark` ancestor; see [Styling](../README.md#styling).
+
 ## Authentication components
 
 ### `SignIn`

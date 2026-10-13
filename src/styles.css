@@ -1,0 +1,282 @@
+/*
+ * @hyperyai/sdk UI styles — import once: `import '@hyperyai/sdk/styles.css'`.
+ *
+ * Tailwind 4, CSS-first. Every utility is prefixed `hy:` and there is no
+ * preflight, so this stylesheet never restyles the host page: it only styles
+ * elements inside a `.hypery` root (every SDK component renders one).
+ *
+ * Theming: override any `--hy-*` token on `.hypery` (or a parent), e.g.
+ *   .hypery { --hy-primary: oklch(0.55 0.2 290); --hy-radius: 0.75rem; }
+ * Dark mode: a `.dark` ancestor, `.hypery.dark`, or the OS preference (opt out
+ * with a `.light` ancestor or `data-theme="light"`).
+ */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme" layer(theme) prefix(hy);
+@import "tailwindcss/utilities" layer(utilities);
+
+@source "./components";
+
+/* Hypery design tokens (light). */
+.hypery {
+  --hy-radius: 0.625rem;
+
+  --hy-background: oklch(0.982 0.006 240);
+  --hy-surface-sunken: oklch(0.962 0.01 240);
+  --hy-card: oklch(1 0 0);
+  --hy-popover: oklch(1 0 0);
+
+  --hy-foreground: oklch(0.27 0.06 255);
+  --hy-card-foreground: var(--hy-foreground);
+  --hy-popover-foreground: var(--hy-foreground);
+  --hy-muted-foreground: oklch(0.49 0.035 252);
+  --hy-subtle-foreground: oklch(0.63 0.025 250);
+
+  --hy-secondary: oklch(0.955 0.01 240);
+  --hy-secondary-foreground: oklch(0.30 0.06 255);
+  --hy-muted: oklch(0.955 0.01 240);
+  --hy-accent: oklch(0.955 0.012 240);
+  --hy-accent-foreground: oklch(0.30 0.06 255);
+
+  --hy-field: oklch(0.938 0.012 240);
+  --hy-field-hover: oklch(0.918 0.014 240);
+
+  --hy-border: oklch(0.27 0.06 255 / 0.07);
+  --hy-border-strong: oklch(0.27 0.06 255 / 0.18);
+  --hy-ring: oklch(0.62 0.15 232);
+
+  --hy-primary: oklch(0.50 0.14 236);
+  --hy-primary-foreground: oklch(0.99 0 0);
+  --hy-primary-hover: color-mix(in oklch, var(--hy-primary), black 14%);
+  --hy-primary-subtle: oklch(0.955 0.03 225);
+  --hy-primary-subtle-foreground: oklch(0.42 0.13 240);
+
+  --hy-success: oklch(0.56 0.13 155);
+  --hy-success-subtle: oklch(0.955 0.04 155);
+  --hy-success-foreground: oklch(0.38 0.10 155);
+  --hy-warning: oklch(0.70 0.15 75);
+  --hy-warning-subtle: oklch(0.96 0.05 85);
+  --hy-warning-foreground: oklch(0.42 0.10 65);
+  --hy-info: oklch(0.55 0.14 250);
+  --hy-info-subtle: oklch(0.955 0.03 250);
+  --hy-info-foreground: oklch(0.40 0.13 255);
+  --hy-destructive: oklch(0.55 0.21 27);
+  --hy-destructive-foreground: oklch(0.99 0 0);
+  --hy-danger-subtle: oklch(0.955 0.03 25);
+  --hy-danger-foreground: oklch(0.42 0.16 27);
+
+  --hy-overlay: oklch(0.27 0.06 255 / 0.45);
+
+  --hy-elevation-xs: 0 1px 2px 0 oklch(0.3 0.08 262 / 0.08), 0 1px 1px 0 oklch(0 0 0 / 0.03);
+  --hy-elevation-sm: 0 2px 5px -1px oklch(0.3 0.08 262 / 0.12), 0 1px 3px -1px oklch(0 0 0 / 0.10);
+  --hy-elevation-md: 0 6px 12px -2px oklch(0.3 0.08 262 / 0.15), 0 3px 7px -3px oklch(0 0 0 / 0.14);
+  --hy-elevation-lg: 0 13px 27px -5px oklch(0.3 0.08 262 / 0.18), 0 8px 16px -8px oklch(0 0 0 / 0.20);
+  --hy-elevation-card: 0 1px 2px 0 oklch(0.3 0.08 262 / 0.07), 0 4px 14px -4px oklch(0.3 0.08 262 / 0.10);
+  --hy-elevation-xl: 0 30px 60px -12px oklch(0.3 0.08 262 / 0.25), 0 18px 36px -18px oklch(0 0 0 / 0.30);
+
+  --hy-brand-1: oklch(0.70 0.15 210);
+  --hy-brand-2: oklch(0.58 0.19 262);
+}
+
+/* Hypery design tokens (dark). Kept in one rule so the three triggers stay in sync. */
+:where(.dark) .hypery,
+.hypery.dark,
+.hypery:where(.dark) {
+  --hy-background: oklch(0.17 0.03 258);
+  --hy-surface-sunken: oklch(0.145 0.028 258);
+  --hy-card: oklch(0.21 0.034 258);
+  --hy-popover: oklch(0.245 0.038 258);
+  --hy-foreground: oklch(0.96 0.008 240);
+  --hy-muted-foreground: oklch(0.74 0.03 248);
+  --hy-subtle-foreground: oklch(0.60 0.03 250);
+  --hy-secondary: oklch(0.26 0.036 258);
+  --hy-secondary-foreground: oklch(0.92 0.01 240);
+  --hy-muted: oklch(0.26 0.036 258);
+  --hy-accent: oklch(0.27 0.04 258);
+  --hy-accent-foreground: oklch(0.96 0.008 240);
+  --hy-field: oklch(0.255 0.036 258);
+  --hy-field-hover: oklch(0.30 0.04 258);
+  --hy-border: oklch(1 0 0 / 0.06);
+  --hy-border-strong: oklch(1 0 0 / 0.16);
+  --hy-ring: oklch(0.74 0.14 222);
+  --hy-primary: oklch(0.74 0.14 222);
+  --hy-primary-foreground: oklch(0.17 0.04 250);
+  --hy-primary-hover: color-mix(in oklch, var(--hy-primary), white 12%);
+  --hy-primary-subtle: oklch(0.30 0.07 240);
+  --hy-primary-subtle-foreground: oklch(0.86 0.09 220);
+  --hy-success: oklch(0.72 0.15 155);
+  --hy-success-subtle: oklch(0.26 0.05 155);
+  --hy-success-foreground: oklch(0.85 0.12 155);
+  --hy-warning: oklch(0.80 0.14 80);
+  --hy-warning-subtle: oklch(0.28 0.05 75);
+  --hy-warning-foreground: oklch(0.88 0.11 85);
+  --hy-info: oklch(0.72 0.12 250);
+  --hy-info-subtle: oklch(0.26 0.05 255);
+  --hy-info-foreground: oklch(0.85 0.09 250);
+  --hy-destructive: oklch(0.64 0.19 25);
+  --hy-destructive-foreground: oklch(0.16 0.02 25);
+  --hy-danger-subtle: oklch(0.27 0.06 25);
+  --hy-danger-foreground: oklch(0.86 0.10 25);
+  --hy-overlay: oklch(0 0 0 / 0.65);
+  --hy-elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+  --hy-elevation-sm: 0 1px 3px 0 oklch(0 0 0 / 0.45);
+  --hy-elevation-md: 0 4px 12px -2px oklch(0 0 0 / 0.5);
+  --hy-elevation-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
+  --hy-elevation-card: 0 0 0 1px oklch(1 0 0 / 0.06), 0 8px 24px -12px oklch(0 0 0 / 0.5);
+  --hy-elevation-xl: 0 0 0 1px oklch(1 0 0 / 0.07), 0 30px 60px -12px oklch(0 0 0 / 0.7);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hypery:not(:where(.light, .light *, [data-theme="light"], [data-theme="light"] *)) {
+    --hy-background: oklch(0.17 0.03 258);
+    --hy-surface-sunken: oklch(0.145 0.028 258);
+    --hy-card: oklch(0.21 0.034 258);
+    --hy-popover: oklch(0.245 0.038 258);
+    --hy-foreground: oklch(0.96 0.008 240);
+    --hy-muted-foreground: oklch(0.74 0.03 248);
+    --hy-subtle-foreground: oklch(0.60 0.03 250);
+    --hy-secondary: oklch(0.26 0.036 258);
+    --hy-secondary-foreground: oklch(0.92 0.01 240);
+    --hy-muted: oklch(0.26 0.036 258);
+    --hy-accent: oklch(0.27 0.04 258);
+    --hy-accent-foreground: oklch(0.96 0.008 240);
+    --hy-field: oklch(0.255 0.036 258);
+    --hy-field-hover: oklch(0.30 0.04 258);
+    --hy-border: oklch(1 0 0 / 0.06);
+    --hy-border-strong: oklch(1 0 0 / 0.16);
+    --hy-ring: oklch(0.74 0.14 222);
+    --hy-primary: oklch(0.74 0.14 222);
+    --hy-primary-foreground: oklch(0.17 0.04 250);
+    --hy-primary-hover: color-mix(in oklch, var(--hy-primary), white 12%);
+    --hy-primary-subtle: oklch(0.30 0.07 240);
+    --hy-primary-subtle-foreground: oklch(0.86 0.09 220);
+    --hy-success: oklch(0.72 0.15 155);
+    --hy-success-subtle: oklch(0.26 0.05 155);
+    --hy-success-foreground: oklch(0.85 0.12 155);
+    --hy-warning: oklch(0.80 0.14 80);
+    --hy-warning-subtle: oklch(0.28 0.05 75);
+    --hy-warning-foreground: oklch(0.88 0.11 85);
+    --hy-info: oklch(0.72 0.12 250);
+    --hy-info-subtle: oklch(0.26 0.05 255);
+    --hy-info-foreground: oklch(0.85 0.09 250);
+    --hy-destructive: oklch(0.64 0.19 25);
+    --hy-destructive-foreground: oklch(0.16 0.02 25);
+    --hy-danger-subtle: oklch(0.27 0.06 25);
+    --hy-danger-foreground: oklch(0.86 0.10 25);
+    --hy-overlay: oklch(0 0 0 / 0.65);
+    --hy-elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+    --hy-elevation-sm: 0 1px 3px 0 oklch(0 0 0 / 0.45);
+    --hy-elevation-md: 0 4px 12px -2px oklch(0 0 0 / 0.5);
+    --hy-elevation-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
+    --hy-elevation-card: 0 0 0 1px oklch(1 0 0 / 0.06), 0 8px 24px -12px oklch(0 0 0 / 0.5);
+    --hy-elevation-xl: 0 0 0 1px oklch(1 0 0 / 0.07), 0 30px 60px -12px oklch(0 0 0 / 0.7);
+  }
+}
+
+@theme inline {
+  --color-background: var(--hy-background);
+  --color-surface-sunken: var(--hy-surface-sunken);
+  --color-card: var(--hy-card);
+  --color-card-foreground: var(--hy-card-foreground);
+  --color-popover: var(--hy-popover);
+  --color-popover-foreground: var(--hy-popover-foreground);
+  --color-foreground: var(--hy-foreground);
+  --color-muted: var(--hy-muted);
+  --color-muted-foreground: var(--hy-muted-foreground);
+  --color-subtle-foreground: var(--hy-subtle-foreground);
+  --color-secondary: var(--hy-secondary);
+  --color-secondary-foreground: var(--hy-secondary-foreground);
+  --color-accent: var(--hy-accent);
+  --color-accent-foreground: var(--hy-accent-foreground);
+  --color-field: var(--hy-field);
+  --color-field-hover: var(--hy-field-hover);
+  --color-border: var(--hy-border);
+  --color-border-strong: var(--hy-border-strong);
+  --color-ring: var(--hy-ring);
+  --color-primary: var(--hy-primary);
+  --color-primary-foreground: var(--hy-primary-foreground);
+  --color-primary-hover: var(--hy-primary-hover);
+  --color-primary-subtle: var(--hy-primary-subtle);
+  --color-primary-subtle-foreground: var(--hy-primary-subtle-foreground);
+  --color-success: var(--hy-success);
+  --color-success-subtle: var(--hy-success-subtle);
+  --color-success-foreground: var(--hy-success-foreground);
+  --color-warning: var(--hy-warning);
+  --color-warning-subtle: var(--hy-warning-subtle);
+  --color-warning-foreground: var(--hy-warning-foreground);
+  --color-info: var(--hy-info);
+  --color-info-subtle: var(--hy-info-subtle);
+  --color-info-foreground: var(--hy-info-foreground);
+  --color-destructive: var(--hy-destructive);
+  --color-destructive-foreground: var(--hy-destructive-foreground);
+  --color-danger-subtle: var(--hy-danger-subtle);
+  --color-danger-foreground: var(--hy-danger-foreground);
+  --color-overlay: var(--hy-overlay);
+  --color-brand-1: var(--hy-brand-1);
+  --color-brand-2: var(--hy-brand-2);
+
+  --radius-sm: calc(var(--hy-radius) - 4px);
+  --radius-md: calc(var(--hy-radius) - 2px);
+  --radius-lg: var(--hy-radius);
+  --radius-xl: calc(var(--hy-radius) + 4px);
+  --radius-2xl: calc(var(--hy-radius) + 6px);
+
+  --shadow-xs: var(--hy-elevation-xs);
+  --shadow-sm: var(--hy-elevation-sm);
+  --shadow-md: var(--hy-elevation-md);
+  --shadow-lg: var(--hy-elevation-lg);
+  --shadow-xl: var(--hy-elevation-xl);
+  --shadow-card: var(--hy-elevation-card);
+
+  --animate-hy-overlay-in: hy-fade-in 150ms ease-out;
+  --animate-hy-content-in: hy-content-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-hy-pop-in: hy-pop-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes hy-fade-in {
+    from { opacity: 0; }
+  }
+  @keyframes hy-content-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  }
+  @keyframes hy-pop-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  }
+}
+
+/* A scoped reset instead of preflight: only SDK markup is touched, at zero specificity. */
+@layer base {
+  :where(.hypery, .hypery *, .hypery ::before, .hypery ::after) {
+    box-sizing: border-box;
+    border: 0 solid;
+    margin: 0;
+    padding: 0;
+  }
+  :where(.hypery) {
+    font-family: inherit;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  :where(.hypery button, .hypery input, .hypery a) {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+    letter-spacing: inherit;
+    text-decoration: inherit;
+  }
+  :where(.hypery button) {
+    cursor: pointer;
+  }
+  :where(.hypery button:disabled) {
+    cursor: not-allowed;
+  }
+  :where(.hypery h1, .hypery h2, .hypery h3, .hypery p) {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  :where(.hypery img, .hypery svg) {
+    display: block;
+    max-width: 100%;
+  }
+}
