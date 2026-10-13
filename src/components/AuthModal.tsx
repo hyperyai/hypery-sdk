@@ -6,8 +6,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { useSignInAttempt } from '../lib/sign-in-attempt';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog.js';
+import { useSignInAttempt } from '../lib/sign-in-attempt.js';
 
 /** Props of {@link AuthModal}. */
 export interface AuthModalProps {

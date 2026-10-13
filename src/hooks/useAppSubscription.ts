@@ -14,13 +14,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useHyperyAuth } from '../lib/context';
-import { parseError } from '../lib/parse-error';
-import type { ParsedError } from '../types';
-import { useCheckout, type CheckoutResult } from './useCheckout';
-import { intervalSwitchPath, type PlanInterval } from '../lib/checkout';
+import { useHyperyAuth } from '../lib/context.js';
+import { parseError } from '../lib/parse-error.js';
+import type { ParsedError } from '../types/index.js';
+import { useCheckout, type CheckoutResult } from './useCheckout.js';
+import { intervalSwitchPath, type PlanInterval } from '../lib/checkout.js';
 
-export type { PlanInterval } from '../lib/checkout';
+export type { PlanInterval } from '../lib/checkout.js';
 
 /** A plan's price at one billing interval. */
 export interface AppPlanPrice {

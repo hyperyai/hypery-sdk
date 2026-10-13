@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { resolveInteractionMode } from '../popup';
-import { parseError } from '../parse-error';
+import { resolveInteractionMode } from '../popup.js';
+import { parseError } from '../parse-error.js';
 
 function setUA(ua: string | undefined) {
   if (ua === undefined) {

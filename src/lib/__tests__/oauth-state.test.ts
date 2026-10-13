@@ -4,7 +4,7 @@ import {
   exchangeCodeForToken,
   getAuthorizationUrl,
   verifyOAuthState,
-} from '../oauth';
+} from '../oauth.js';
 
 const base = { clientId: 'c1', redirectUri: 'https://app.test/cb', gatewayUrl: 'https://gw.test' };
 const realFetch = globalThis.fetch;

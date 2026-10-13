@@ -3,7 +3,7 @@
  * Implements PKCE (Proof Key for Code Exchange) flow for secure authentication
  */
 
-import type { AuthTokens } from '../types';
+import type { AuthTokens } from '../types/index.js';
 
 /**
  * Generate random string for PKCE verifier

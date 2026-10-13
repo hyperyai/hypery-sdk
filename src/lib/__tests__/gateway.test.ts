@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { errorMessageFromBody, resolveGatewayUrl } from '../gateway';
-import { fetchMembershipsShared } from '../../hooks/useMemberships';
-import type { BillingMode } from '../../hooks/useWallet';
+import { errorMessageFromBody, resolveGatewayUrl } from '../gateway.js';
+import { fetchMembershipsShared } from '../../hooks/useMemberships.js';
+import type { BillingMode } from '../../hooks/useWallet.js';
 
 const realFetch = globalThis.fetch;
 const realEnv = process.env.NEXT_PUBLIC_GATEWAY_URL;

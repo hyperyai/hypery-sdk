@@ -1,5 +1,5 @@
-import type { ParsedError } from "../types";
-import { parseError } from "./parse-error";
+import type { ParsedError } from "../types/index.js";
+import { parseError } from "./parse-error.js";
 
 /**
  * Streaming (SSE) error classification for the gateway's chat/completions stream.

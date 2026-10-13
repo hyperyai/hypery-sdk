@@ -6,7 +6,7 @@
 'use client';
 
 import React from 'react';
-import { useUser } from '../lib/context';
+import { useUser } from '../lib/context.js';
 
 export interface UserProfileProps {
   /** Show extended profile information */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { revokeTokens } from '../oauth';
+import { revokeTokens } from '../oauth.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

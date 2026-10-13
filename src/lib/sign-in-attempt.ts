@@ -9,8 +9,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useHyperyAuth } from './context';
-import type { LoginOptions } from '../types';
+import { useHyperyAuth } from './context.js';
+import type { LoginOptions } from '../types/index.js';
 
 /** Which button started the attempt. */
 export type SignInMethod = 'google' | 'github' | 'email';

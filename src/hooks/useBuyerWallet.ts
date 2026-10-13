@@ -10,9 +10,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useHyperyAuth } from "../lib/context";
-import { parseError } from "../lib/parse-error";
-import type { ParsedError } from "../types";
+import { useHyperyAuth } from "../lib/context.js";
+import { parseError } from "../lib/parse-error.js";
+import type { ParsedError } from "../types/index.js";
 
 /** A card saved on the buyer's Hypery wallet. */
 export interface BuyerPaymentMethod {

@@ -13,8 +13,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useHyperyAuth } from '../lib/context';
-import { errorMessageFromBody, resolveGatewayUrl } from '../lib/gateway';
+import { useHyperyAuth } from '../lib/context.js';
+import { errorMessageFromBody, resolveGatewayUrl } from '../lib/gateway.js';
 
 /**
  * How the team is billed for AI usage: `metered` (card billed for usage),

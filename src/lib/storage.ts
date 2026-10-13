@@ -2,7 +2,7 @@
  * Token storage utilities
  */
 
-import type { AuthTokens, User } from '../types';
+import type { AuthTokens, User } from '../types/index.js';
 
 const TOKEN_KEY = 'hypery_auth_tokens';
 const USER_KEY = 'hypery_auth_user';

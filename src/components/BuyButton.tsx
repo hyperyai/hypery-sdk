@@ -12,9 +12,9 @@
 
 import type React from "react";
 import { useState } from "react";
-import { type BuySuccess } from "../hooks/useMarketplace";
-import { useCheckout } from "../hooks/useCheckout";
-import type { BrandingConfig, ParsedError } from "../types";
+import { type BuySuccess } from "../hooks/useMarketplace.js";
+import { useCheckout } from "../hooks/useCheckout.js";
+import type { BrandingConfig, ParsedError } from "../types/index.js";
 
 /** Props of {@link BuyButton}. */
 export interface BuyButtonProps {

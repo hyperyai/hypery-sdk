@@ -22,7 +22,7 @@ import type {
   PopupAuthResult,
   ResolvedMode,
   User,
-} from '../types';
+} from '../types/index.js';
 import {
   getAuthorizationUrl,
   exchangeCodeForToken,
@@ -31,11 +31,11 @@ import {
   getUserInfo,
   clearOAuthTransaction,
   verifyOAuthState,
-} from './oauth';
-import { resolvePostLogoutRedirect } from './logout-redirect';
-import { parseError } from './parse-error';
-import { openPopup, resolveInteractionMode } from './popup';
-import { TokenStorage } from './storage';
+} from './oauth.js';
+import { resolvePostLogoutRedirect } from './logout-redirect.js';
+import { parseError } from './parse-error.js';
+import { openPopup, resolveInteractionMode } from './popup.js';
+import { TokenStorage } from './storage.js';
 
 /** window.open target name; also read back in the callback to detect popup context. */
 const AUTH_POPUP_NAME = 'hypery-sdk-popup';

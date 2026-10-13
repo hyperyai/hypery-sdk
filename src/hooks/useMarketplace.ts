@@ -10,9 +10,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useHyperyAuth } from "../lib/context";
-import { isPaymentMethodRequiredError, parseError } from "../lib/parse-error";
-import type { ParsedError } from "../types";
+import { useHyperyAuth } from "../lib/context.js";
+import { isPaymentMethodRequiredError, parseError } from "../lib/parse-error.js";
+import type { ParsedError } from "../types/index.js";
 
 /** Input of `useMarketplace().buy()`. */
 export interface BuyInput {

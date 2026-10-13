@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { CHECKOUT_ENDPOINTS, chargeBody, intervalSwitchPath, needsCard, planPriceCents, subscribeSessionBody, withIdempotency } from '../checkout';
-import { parseError } from '../parse-error';
+import { CHECKOUT_ENDPOINTS, chargeBody, intervalSwitchPath, needsCard, planPriceCents, subscribeSessionBody, withIdempotency } from '../checkout.js';
+import { parseError } from '../parse-error.js';
 
 describe('checkout helpers', () => {
   it('no longer routes subscriptions through the charge/card-setup endpoints', () => {

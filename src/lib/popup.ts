@@ -9,7 +9,7 @@
  * popup, the helper returns `'blocked'` so the caller can fall back to redirect.
  */
 
-import type { InteractionMode, ResolvedMode } from '../types';
+import type { InteractionMode, ResolvedMode } from '../types/index.js';
 
 /**
  * Resolve the effective mode. `auto` prefers popup on desktop but falls back to

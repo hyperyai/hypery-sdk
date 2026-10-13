@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useHyperyAuth } from '../lib/context';
+import { useHyperyAuth } from '../lib/context.js';
 
 export interface SignedInProps {
   children: ReactNode;

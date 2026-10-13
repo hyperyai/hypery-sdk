@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { useHyperyAuth } from "../lib/context";
-import { AuthModal } from "./AuthModal";
-import { type RestrictionError, RestrictionModal } from "./RestrictionModal";
+import { useHyperyAuth } from "../lib/context.js";
+import { AuthModal } from "./AuthModal.js";
+import { type RestrictionError, RestrictionModal } from "./RestrictionModal.js";
 
 /** Props of {@link HyperyModals}. */
 export interface HyperyModalsProps {

@@ -1,6 +1,7 @@
 {
   "name": "@hyperyai/sdk",
   "version": "1.0.1",
+  "type": "module",
   "description": "Drop-in authentication, checkout, and error handling for apps built on Hypery",
   "license": "MIT",
   "repository": {
@@ -19,6 +20,21 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "source": "./src/agents/index.ts",
+      "default": "./dist/agents/index.js"
+    },
+    "./agents/node": {
+      "types": "./dist/agents/node/index.d.ts",
+      "source": "./src/agents/node/index.ts",
+      "default": "./dist/agents/node/index.js"
+    },
+    "./agents/react": {
+      "types": "./dist/agents/react.d.ts",
+      "source": "./src/agents/react.ts",
+      "default": "./dist/agents/react.js"
+    },
     "./package.json": "./package.json"
   },
   "sideEffects": false,
@@ -35,7 +51,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "bun test src",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "typecheck:examples": "tsc -p examples/agents/tsconfig.json"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -48,16 +65,11 @@
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@semantic-release/commit-analyzer": "^13.0.1",
-    "@semantic-release/github": "^12.0.6",
-    "@semantic-release/npm": "^13.1.5",
-    "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/node": "^26.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "semantic-release": "^25.0.3",
     "typescript": "^7.0.2"
   },
   "engines": {
@@ -73,6 +85,9 @@
     "checkout",
     "error-handling",
     "spending-limits",
-    "credits"
+    "credits",
+    "agents",
+    "subagents",
+    "agent-loop"
   ]
 }

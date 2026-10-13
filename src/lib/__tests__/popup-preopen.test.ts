@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { subscribePreopenNeeded } from '../checkout';
-import { centeredFeatures, closePopup, openBlankPopup, openPopup } from '../popup';
+import { subscribePreopenNeeded } from '../checkout.js';
+import { centeredFeatures, closePopup, openBlankPopup, openPopup } from '../popup.js';
 
 function fakePopup() {
   return {

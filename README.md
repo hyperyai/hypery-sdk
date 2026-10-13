@@ -107,6 +107,7 @@ Add `billing:charge` to `config.scopes` for checkout.
 | [Errors](./docs/ERRORS.md) | Error codes, `parseError` and the `is*Error` guards, `formatTimeUntilReset`, `HyperyModals`, `RestrictionModal`, `SpendingLimitAlert`, `InsufficientCreditsAlert`, `ErrorBoundary` |
 | [Streaming](./docs/STREAMING.md) | `consumeSSEStream`, `parseSSEFrame`, `parseSSEError` |
 | [Advanced](./docs/ADVANCED.md) | `TokenStorage`, `getAuthorizationUrl`, `exchangeCodeForToken`, `refreshAccessToken`, `getUserInfo` |
+| [Agents](./docs/AGENTS.md) | `@hyperyai/sdk/agents`: the agent loop, agents the main agent can message / resume / stop, plan → build → review, sessions that survive reloads, the Hypery model call, stores (browser, Node, Dune) |
 | [Type reference](./docs/TYPES.md) | Every exported type, grouped |
 
 ## Feature map
@@ -117,6 +118,7 @@ Add `billing:charge` to `config.scopes` for checkout.
 - **Checkout**: log in, charge, add a card and retry in one call, as popups or redirects (`useCheckout`).
 - **Subscriptions**: sell your app's plans with monthly or annual billing and expiring app-scoped credit grants (`useAppSubscription`).
 - **Errors**: one classified `ParsedError` for HTTP and streaming failures, plus turnkey modals.
+- **Agents** (`@hyperyai/sdk/agents`): one agent core for every app — agents you can talk to, a supervisor loop that checks its own work, and sessions that survive reloads.
 
 ## Local development against this repo
 
@@ -142,7 +144,8 @@ includes a guard that fails when a public export is not documented in `docs/*.md
 
 ## Examples
 
-Working apps live in [hypery-examples](https://github.com/hyperyai/hypery-examples).
+Working apps live in [hypery-examples](https://github.com/hyperyai/hypery-examples). Agent examples that run
+offline (or against Hypery with `HYPERY_TOKEN`) are in [`examples/agents`](./examples/agents).
 
 ## License
 

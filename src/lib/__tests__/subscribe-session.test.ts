@@ -7,7 +7,7 @@ import {
   subscribeOutcome,
   subscribeResultPath,
   subscribeSessionBody,
-} from '../checkout';
+} from '../checkout.js';
 
 const GATEWAY = 'https://hypery.ai';
 
