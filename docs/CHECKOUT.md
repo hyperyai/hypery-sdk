@@ -80,6 +80,10 @@ A "Buy · $X.XX" button for a one-off marketplace purchase
 (`kind: 'purchase'`). The first click arms it ("Confirm · $X.XX" plus Cancel),
 the second click charges. Never throws.
 
+| Light | Dark |
+|---|---|
+| <img src="./images/buy-button-light.png" alt="BuyButton (light)" width="197"> | <img src="./images/buy-button-dark.png" alt="BuyButton (dark)" width="197"> |
+
 ```tsx
 import { BuyButton } from '@hyperyai/sdk';
 
@@ -110,6 +114,10 @@ The props type is exported as `BuyButtonProps`.
 
 Subscribes the user to one of your app's plans (`kind: 'subscription'`) on
 Hypery's hosted subscribe page, with the same two-click confirmation. Never throws.
+
+| Light | Dark |
+|---|---|
+| <img src="./images/subscribe-button-light.png" alt="SubscribeButton (light)" width="272"> | <img src="./images/subscribe-button-dark.png" alt="SubscribeButton (dark)" width="272"> |
 
 ```tsx
 import { SubscribeButton, planPriceCents } from '@hyperyai/sdk';

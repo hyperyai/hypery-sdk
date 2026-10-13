@@ -124,6 +124,10 @@ The props type is exported as `HyperyModalsProps`.
 Mode-aware funds modal. When `error` is set it loads `GET /api/wallet/state`
 and shows:
 
+| Light | Dark |
+|---|---|
+| <img src="./images/restriction-modal-light.png" alt="RestrictionModal (light)" width="360"> | <img src="./images/restriction-modal-dark.png" alt="RestrictionModal (dark)" width="360"> |
+
 - spending limit: "Manage spending limits" (opens `settingsUrls.billing` in a new tab) and "Try again";
 - metered or `vag_passthrough` mode, no card, `PAYMENT_METHOD_REQUIRED` or `PAYMENT_DECLINED`: "Add / Update payment method" (Stripe-hosted setup in a popup);
 - prepaid with a card: 1-click "$10 / $25 / $50" top-ups and "Other amount…" (opens `settingsUrls.topup`).
@@ -168,6 +172,10 @@ Inline orange alert for a spending-limit error: message, "{limitType} limit:
 current / limit credits used" and the reset time. Renders nothing unless
 `error.isSpendingLimit`.
 
+| Light | Dark |
+|---|---|
+| <img src="./images/spending-limit-alert-light.png" alt="SpendingLimitAlert (light)" width="528"> | <img src="./images/spending-limit-alert-dark.png" alt="SpendingLimitAlert (dark)" width="528"> |
+
 ```tsx
 import { SpendingLimitAlert, parseError } from '@hyperyai/sdk';
 
@@ -188,6 +196,10 @@ The props type is exported as `SpendingLimitAlertProps`.
 Inline red alert: message and "You have X credits, but need Y credits". Renders
 nothing unless `error.isInsufficientCredits`.
 
+| Light | Dark |
+|---|---|
+| <img src="./images/insufficient-credits-alert-light.png" alt="InsufficientCreditsAlert (light)" width="528"> | <img src="./images/insufficient-credits-alert-dark.png" alt="InsufficientCreditsAlert (dark)" width="528"> |
+
 ```tsx
 <InsufficientCreditsAlert error={parseError(body)} onAddCredits={() => setFundsOpen(true)} />
 ```
@@ -203,6 +215,10 @@ The props type is exported as `InsufficientCreditsAlertProps`.
 ## `ErrorBoundary`
 
 A React error boundary that also displays error values.
+
+| Light | Dark |
+|---|---|
+| <img src="./images/error-boundary-light.png" alt="ErrorBoundary fallback (light)" width="528"> | <img src="./images/error-boundary-dark.png" alt="ErrorBoundary fallback (dark)" width="528"> |
 
 - If a child throws while rendering, it catches the error, calls `onError`, and
   renders `fallback` (a node, or `(error, reset) => node`), or by default the

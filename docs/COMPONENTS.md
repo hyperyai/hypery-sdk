@@ -2,14 +2,13 @@
 
 Drop-in React components for signing users in, gating content and switching
 workspaces. Every component must be rendered inside
-[`HyperyProvider`](./PROVIDER.md). Components are styled with Tailwind utility
-classes, so your app needs Tailwind for the default look; pass `className` to
-restyle. Screenshots are real renders from the `auth-demo` example in
+[`HyperyProvider`](./PROVIDER.md). Components bring their own
+stylesheet (`import '@hyperyai/sdk/styles.css'` once), themed with `--hy-*` CSS
+variables; pass `className` to restyle. Screenshots are real renders, light and
+dark, from the `/gallery` page of the `auth-demo` example in
 [hypery-examples](https://github.com/hyperyai/hypery-examples).
 
 > Back to [README](../README.md) · Checkout buttons: [CHECKOUT.md](./CHECKOUT.md) · Error UI: [ERRORS.md](./ERRORS.md)
-
-![Component gallery overview](./screenshots/examples-overview.png)
 
 Contents: [SignIn](#signin) · [SignUp](#signup) · [SignInForm](#signinform) ·
 [AuthButton](#authbutton) · [AuthModal](#authmodal) · [ModernAuthForm](#modernauthform) ·
@@ -31,15 +30,29 @@ navigates away, so handle post-login on the page at `redirectUri`.
 > Import the stylesheet once: `import '@hyperyai/sdk/styles.css'`. Theme with `--hy-*` CSS variables and dark mode
 > via a `.dark` ancestor; see [Styling](../README.md#styling).
 
+## Testing
+
+Render components without a gateway with `HyperyTestProvider` from `@hyperyai/sdk/testing`. It takes
+`user` (omit or `null` for signed out), `isLoading`, and any other `useHyperyAuth()` field as a prop,
+with no-op methods by default. See [Testing and Storybook](../README.md#testing-and-storybook).
+
+```tsx
+import { HyperyTestProvider } from '@hyperyai/sdk/testing';
+
+<HyperyTestProvider user={{ id: 'u_1', name: 'Ada Lovelace', email: 'ada@example.com' }}>
+  <UserProfile />
+</HyperyTestProvider>
+```
+
 ## Authentication components
 
 ### `SignIn`
 
 A button that calls `login()`. Disabled and labelled "Loading..." while auth is loading.
 
-| `<SignIn />` | `<SignUp />` |
+| Light | Dark |
 |---|---|
-| ![SignIn](./screenshots/signin.png) | ![SignUp](./screenshots/signup.png) |
+| <img src="./images/sign-in-light.png" alt="SignIn: primary, secondary and outline (light)" width="364"> | <img src="./images/sign-in-dark.png" alt="SignIn: primary, secondary and outline (dark)" width="364"> |
 
 ```tsx
 import { SignIn } from '@hyperyai/sdk';
@@ -58,6 +71,10 @@ import { SignIn } from '@hyperyai/sdk';
 ### `SignUp`
 
 A button that calls `signUp()` (login with `prompt=select_account`), falling back to `login()`.
+
+| Light | Dark |
+|---|---|
+| <img src="./images/sign-up-light.png" alt="SignUp: primary, secondary and outline (light)" width="454"> | <img src="./images/sign-up-dark.png" alt="SignUp: primary, secondary and outline (dark)" width="454"> |
 
 ```tsx
 import { SignUp } from '@hyperyai/sdk';
@@ -78,7 +95,9 @@ import { SignUp } from '@hyperyai/sdk';
 An embedded card with GitHub/Google buttons, an optional "Continue with email"
 button and a "Sign up" link.
 
-![SignInForm](./screenshots/signinform.png)
+| Light | Dark |
+|---|---|
+| <img src="./images/sign-in-form-light.png" alt="SignInForm (light)" width="360"> | <img src="./images/sign-in-form-dark.png" alt="SignInForm (dark)" width="360"> |
 
 ```tsx
 import { SignInForm } from '@hyperyai/sdk';
@@ -101,6 +120,10 @@ import { SignInForm } from '@hyperyai/sdk';
 ### `AuthButton`
 
 A button that opens an [`AuthModal`](#authmodal).
+
+| Light | Dark |
+|---|---|
+| <img src="./images/auth-button-light.png" alt="AuthButton: primary, secondary, outline and ghost (light)" width="460"> | <img src="./images/auth-button-dark.png" alt="AuthButton: primary, secondary, outline and ghost (dark)" width="460"> |
 
 ```tsx
 import { AuthButton } from '@hyperyai/sdk';
@@ -128,7 +151,9 @@ The props type is exported as `AuthButtonProps`.
 
 A controlled sign-in / sign-up dialog with optional branding.
 
-![AuthModal (open)](./screenshots/authmodal-open.png)
+| Light | Dark |
+|---|---|
+| <img src="./images/auth-modal-light.png" alt="AuthModal (open) (light)" width="360"> | <img src="./images/auth-modal-dark.png" alt="AuthModal (open) (dark)" width="360"> |
 
 ```tsx
 import { AuthModal } from '@hyperyai/sdk';
@@ -162,6 +187,10 @@ The props type is exported as `AuthModalProps`.
 A full-page style auth card with mode switching and a Terms/Privacy footer
 (links to `/terms` and `/privacy`).
 
+| Light | Dark |
+|---|---|
+| <img src="./images/modern-auth-form-light.png" alt="ModernAuthForm (light)" width="360"> | <img src="./images/modern-auth-form-dark.png" alt="ModernAuthForm (dark)" width="360"> |
+
 ```tsx
 import { ModernAuthForm } from '@hyperyai/sdk';
 
@@ -191,9 +220,9 @@ The props type is exported as `ModernAuthFormProps`.
 Avatar button with a dropdown (optional name/email and "Sign out"). Renders
 nothing while loading or when signed out.
 
-| `<UserButton />` | `<UserProfile />` |
+| Light | Dark |
 |---|---|
-| ![UserButton](./screenshots/userbutton.png) | ![UserProfile](./screenshots/userprofile.png) |
+| <img src="./images/user-button-open-light.png" alt="UserButton (open) (light)" width="320"> | <img src="./images/user-button-open-dark.png" alt="UserButton (open) (dark)" width="320"> |
 
 ```tsx
 import { UserButton } from '@hyperyai/sdk';
@@ -219,6 +248,10 @@ import { UserButton } from '@hyperyai/sdk';
 Profile card with avatar, name, email and (extended) user id. Renders a
 skeleton while loading and nothing when signed out.
 
+| Light | Dark |
+|---|---|
+| <img src="./images/user-profile-light.png" alt="UserProfile (light)" width="380"> | <img src="./images/user-profile-dark.png" alt="UserProfile (dark)" width="380"> |
+
 ```tsx
 import { UserProfile } from '@hyperyai/sdk';
 
@@ -238,6 +271,10 @@ Dropdown listing every team and workspace the user belongs to (from
 [`setActiveWorkspace`](./HOOKS.md#setactiveworkspace). The personal team is
 labelled "Personal". Renders nothing when there are no memberships. Uses
 `lucide-react` icons.
+
+| Light | Dark |
+|---|---|
+| <img src="./images/workspace-switcher-light.png" alt="WorkspaceSwitcher (open) (light)" width="300"> | <img src="./images/workspace-switcher-dark.png" alt="WorkspaceSwitcher (open) (dark)" width="300"> |
 
 ```tsx
 import { WorkspaceSwitcher } from '@hyperyai/sdk';
@@ -309,5 +346,8 @@ It has no scope/permission prop.
 
 ---
 
-<sub>Screenshots generated from the `auth-demo` example in [hypery-examples](https://github.com/hyperyai/hypery-examples) (`/examples`). To regenerate, run the demo on
-`:3003` and re-capture into `docs/screenshots/`.</sub>
+<sub>Screenshots are captured from `/gallery` in the `auth-demo` example in
+[hypery-examples](https://github.com/hyperyai/hypery-examples), which renders each component inside
+`HyperyTestProvider` with sample data. To regenerate: in `auth-demo`, run `npm run build && npm start`,
+then `node scripts/screenshots.mjs <path-to-hypery-sdk>/docs/images`. It writes `<name>-light.png` and
+`<name>-dark.png` at 2x for every `[data-shot]` frame.</sub>
