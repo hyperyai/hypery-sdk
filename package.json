@@ -24,6 +24,16 @@
       "source": "./src/agents/index.ts",
       "default": "./dist/agents/index.js"
     },
+    "./agents/node": {
+      "types": "./dist/agents/node/index.d.ts",
+      "source": "./src/agents/node/index.ts",
+      "default": "./dist/agents/node/index.js"
+    },
+    "./agents/react": {
+      "types": "./dist/agents/react.d.ts",
+      "source": "./src/agents/react.ts",
+      "default": "./dist/agents/react.js"
+    },
     "./package.json": "./package.json"
   },
   "sideEffects": false,
@@ -40,7 +50,8 @@
     "build": "tsc -p tsconfig.json",
     "test": "bun test src",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "typecheck:examples": "tsc -p examples/agents/tsconfig.json"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

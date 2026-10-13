@@ -11,10 +11,19 @@
 // Host-agnostic: the host supplies the model call, its profiles, the tools a child may use and how to run them, and
 // the child's system prompt. Children cannot spawn children (depth 1, as in dune and Claude Code).
 
-import { runAgentLoop, type LoopTool } from './loop'
-import type { AgentProfile, CallModel, ChatMessage, ToolCall, ToolRun } from './types'
+import { runAgentLoop, type LoopTool } from './loop.js'
+import type { AgentProfile, CallModel, ChatMessage, ToolCall, ToolRun } from './types.js'
 
-export type SessionStatus = 'running' | 'done' | 'error' | 'stopped'
+export type SessionStatus = 'queued' | 'running' | 'done' | 'error' | 'stopped'
+
+/** What the host's UI can follow: one stream for every agent. */
+export type AgentEvent =
+  | { type: 'session'; sessionId: string; status: SessionStatus; profile: string; description: string }
+  | { type: 'tool-start'; sessionId: string; name: string }
+  | { type: 'tool-end'; sessionId: string; name: string; ok: boolean; summary: string }
+  | { type: 'text'; sessionId: string; delta: string }
+  | { type: 'report'; sessionId: string; message: string; question: boolean }
+  | { type: 'nudge'; sessionId: string; message: string }
 
 export interface AgentSession {
   id: string
@@ -56,8 +65,10 @@ export interface AgentHost {
   /** The child's system prompt (the profile's instructions plus the host's context). */
   childSystemPrompt: (ctx: ChildRunContext) => string
   store?: SessionStore
-  /** Live progress of a child (its tool calls), for the host's UI. */
-  onChildEvent?: (event: { sessionId: string; type: 'tool-start' | 'tool-end' | 'text'; name?: string; ok?: boolean; summary?: string; delta?: string }) => void
+  /** Every agent's progress, for the host's UI. */
+  onEvent?: (event: AgentEvent) => void
+  /** Background agents running at once; more wait as 'queued'. Default 4. */
+  maxConcurrent?: number
   /** Sessions changed (spawned, finished, messaged, stopped). */
   onChange?: () => void
   /** Default child round budget. */
@@ -90,8 +101,8 @@ const reportSpec: LoopTool = {
     type: 'function',
     function: {
       name: REPORT_TOOL,
-      description: 'Send the main agent a progress update or a question while you keep working. It arrives between its steps; it can answer with a message you read at your next step. Your final answer still goes back by itself when you finish.',
-      parameters: { type: 'object', properties: { message: { type: 'string', description: 'What to tell the main agent.' } }, required: ['message'] },
+      description: 'Send the main agent a progress update, or a question (set question) when you need a decision you cannot make yourself. It arrives between its steps and it answers with a message you read at your next step — keep working on what you can meanwhile. Your final answer still goes back by itself when you finish.',
+      parameters: { type: 'object', properties: { message: { type: 'string', description: 'What to tell the main agent.' }, question: { type: 'boolean', description: 'This needs an answer.' } }, required: ['message'] },
     },
   },
 }
@@ -101,6 +112,11 @@ export class AgentRuntime {
   private controllers = new Map<string, AbortController>()
   private parentQueue: string[] = []
   private loaded: Promise<void> | null = null
+  private waiting: (() => void)[] = []
+  /** Background slots taken (claimed synchronously, so spawns in a row can't all slip past the limit). */
+  private activeBackground = 0
+  private listeners = new Set<() => void>()
+  private pendingSaves = new Set<Promise<void>>()
 
   constructor(private host: AgentHost) {}
 
@@ -114,6 +130,17 @@ export class AgentRuntime {
       this.changed()
     })()
     return this.loaded
+  }
+
+  /** Wait until every session change has reached the store (before a process exits or a page unloads). */
+  async flush(): Promise<void> {
+    while (this.pendingSaves.size) await Promise.all([...this.pendingSaves])
+  }
+
+  /** Called whenever sessions change (spawned, queued, finished, messaged, stopped). Returns the unsubscribe. */
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn)
+    return () => { this.listeners.delete(fn) }
   }
 
   list(): AgentSession[] {
@@ -152,8 +179,16 @@ export class AgentRuntime {
     }
     this.sessions.set(session.id, session)
     this.changed()
+    this.emit({ type: 'session', sessionId: session.id, status: 'running', profile: session.profile, description: session.description })
+    if (background) {
+      void this.slot(session)
+        .then(async () => {
+          try { if (session.status !== 'stopped') await this.run(session, profile, prompt, req.readOnly === true, req.signal, true) } finally { this.release() }
+        })
+        .catch(() => {})
+      return { kind: 'started', id: session.id }
+    }
     const run = this.run(session, profile, prompt, req.readOnly === true, req.signal, true)
-    if (background) { void run; return { kind: 'started', id: session.id } }
     const out = await run
     return { kind: 'done', id: session.id, ok: out.ok, summary: out.summary, rounds: out.rounds }
   }
@@ -177,16 +212,20 @@ export class AgentRuntime {
     if (!profile) return { kind: 'unknown', id }
     Object.assign(session, { status: 'running', endedAt: undefined, background: !opts.wait })
     this.changed()
-    const run = this.run(session, profile, text, false, opts.signal, false)
-    if (!opts.wait) { void run; return { kind: 'resumed', id } }
-    const out = await run
+    if (!opts.wait) {
+      void this.slot(session)
+        .then(async () => { try { if (session.status !== 'stopped') await this.run(session, profile, text, false, opts.signal, false) } finally { this.release() } })
+        .catch(() => {})
+      return { kind: 'resumed', id }
+    }
+    const out = await this.run(session, profile, text, false, opts.signal, false)
     return { kind: 'done', id, ok: out.ok, summary: out.summary }
   }
 
   /** Stop one child. */
   stop(id: string): boolean {
     const session = this.sessions.get(id)
-    if (!session || session.status !== 'running') return false
+    if (!session || (session.status !== 'running' && session.status !== 'queued')) return false
     this.controllers.get(id)?.abort()
     Object.assign(session, { status: 'stopped', endedAt: this.now() })
     this.persist(session)
@@ -199,12 +238,37 @@ export class AgentRuntime {
     this.parentQueue.length = 0
   }
 
-  /** A child's report to the parent (also what `report_to_parent` does). */
-  report(fromId: string, text: string): void {
+  /** A child's report to the parent (also what `report_to_parent` does). A question asks for an answer. */
+  report(fromId: string, text: string, question = false): void {
     const s = this.sessions.get(fromId)
-    this.parentQueue.push(`Report from agent ${fromId}${s ? ` (${s.profile})` : ''}:\n${text}\n(Answer with send_message if it needs a reply.)`)
+    const who = `agent ${fromId}${s ? ` (${s.profile})` : ''}`
+    this.parentQueue.push(question
+      ? `QUESTION from ${who} — it needs your answer (send_message ${fromId}):\n${text}`
+      : `Report from ${who}:\n${text}`)
+    this.emit({ type: 'report', sessionId: fromId, message: text, question })
     this.changed()
   }
+
+  /** Take a background slot (maxConcurrent); the session shows 'queued' while it waits. */
+  private async slot(session: AgentSession): Promise<void> {
+    const max = this.host.maxConcurrent ?? 4
+    if (this.activeBackground < max) { this.activeBackground++; return }
+    session.status = 'queued'
+    this.emit({ type: 'session', sessionId: session.id, status: 'queued', profile: session.profile, description: session.description })
+    this.changed()
+    // The slot is handed over by the run that frees it (see `release`).
+    await new Promise<void>(res => this.waiting.push(res))
+    if (session.status === 'queued') session.status = 'running'
+  }
+
+  /** A background run ended: give its slot to the next queued agent, or free it. */
+  private release() {
+    const next = this.waiting.shift()
+    if (next) next()
+    else this.activeBackground = Math.max(0, this.activeBackground - 1)
+  }
+
+  private emit(e: AgentEvent) { this.host.onEvent?.(e) }
 
   private async run(session: AgentSession, profile: AgentProfile, prompt: string, forceReadOnly: boolean, parentSignal: AbortSignal | undefined, fresh: boolean) {
     const controller = new AbortController()
@@ -230,17 +294,20 @@ export class AgentRuntime {
         drainNotifications: () => session.inbox.splice(0, session.inbox.length).map(t => `Message from the main agent:\n${t}`),
         execTool: async call => {
           if (call.name === REPORT_TOOL) {
-            let message = ''
-            try { message = String((JSON.parse(call.argsText || '{}') as { message?: unknown }).message ?? '') } catch { /* empty */ }
-            this.report(session.id, message)
+            let args: { message?: unknown; question?: unknown } = {}
+            try { args = JSON.parse(call.argsText || '{}') } catch { /* empty */ }
+            this.report(session.id, String(args.message ?? ''), args.question === true)
             return { ...call, ok: true, summary: 'reported', content: JSON.stringify({ ok: true }) }
           }
           return this.host.execChildTool(call, ctx)
         },
+        // A building agent asked to change something keeps going until it has (read-only types just answer).
+        requireAction: fresh && !ctx.readOnly,
         hooks: {
-          onToolStart: c => this.host.onChildEvent?.({ sessionId: session.id, type: 'tool-start', name: c.name }),
-          onToolEnd: r => this.host.onChildEvent?.({ sessionId: session.id, type: 'tool-end', name: r.name, ok: r.ok, summary: r.summary }),
-          onTextDelta: d => this.host.onChildEvent?.({ sessionId: session.id, type: 'text', delta: d }),
+          onToolStart: c => this.emit({ type: 'tool-start', sessionId: session.id, name: c.name }),
+          onToolEnd: r => this.emit({ type: 'tool-end', sessionId: session.id, name: r.name, ok: r.ok, summary: r.summary }),
+          onTextDelta: d => this.emit({ type: 'text', sessionId: session.id, delta: d }),
+          onNudge: m => this.emit({ type: 'nudge', sessionId: session.id, message: m }),
         },
       })
       session.transcript = outcome.messages
@@ -261,14 +328,21 @@ export class AgentRuntime {
     if (session.background && session.status !== 'stopped') {
       this.parentQueue.push(`Agent ${session.id} (${session.profile}) ${ok ? 'finished' : 'failed'}:\n${summary}`)
     }
+    this.emit({ type: 'session', sessionId: session.id, status: session.status, profile: session.profile, description: session.description })
     this.persist(session)
     return { ok, summary, rounds }
   }
 
   private now() { return this.host.now?.() ?? Date.now() }
-  private changed() { this.host.onChange?.() }
+  private changed() {
+    this.host.onChange?.()
+    for (const l of this.listeners) l()
+  }
   private persist(s: AgentSession) {
     this.changed()
-    void this.host.store?.save(s).catch(() => {})
+    if (!this.host.store) return
+    const p = this.host.store.save(s).catch(() => {})
+    this.pendingSaves.add(p)
+    void p.finally(() => this.pendingSaves.delete(p))
   }
 }

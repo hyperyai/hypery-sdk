@@ -9,7 +9,8 @@
 //   parent, finished background agents — all land between rounds, and one arriving as the model stops continues it;
 // - a dropped or stalled model stream is retried (dune's isRecoverableModelTimeout).
 
-import type { CallModel, ChatMessage, ChatToolSpec, ModelHooks, ToolCall, ToolRun } from './types'
+import { compactTranscript, fitImagesToBudget, pruneOldImages, type CompactOptions } from './context.js'
+import type { CallModel, ChatMessage, ChatToolSpec, ModelHooks, ToolCall, ToolRun } from './types.js'
 
 export interface LoopTool {
   spec: ChatToolSpec
@@ -54,6 +55,28 @@ export interface LoopOptions {
   modelRetries?: number
   /** Which model errors are worth retrying. Default: timeouts, aborts not from `signal`, network drops, 5xx. */
   isRecoverable?: (err: unknown) => boolean
+  /**
+   * Keep the transcript inside the request: older rendered views are dropped (`keepImageTurns`, default 2), the
+   * request is fitted to `maxRequestChars` (default 4.3 MB minus the tool specs), and a transcript longer than
+   * `compact.maxChars` is compacted.
+   */
+  context?: { keepImageTurns?: number; maxRequestChars?: number; compact?: CompactOptions }
+  /**
+   * Called after every round with the run's state: save it, and a run cut off by a reload, a crash or a sleeping
+   * device continues from there (`resumeRun`). Awaited, so a save completes before the next round starts.
+   */
+  checkpoint?: (state: LoopCheckpoint) => void | Promise<void>
+  /** Continue a checkpointed run: its `acted` and remaining nudges carry over. */
+  resumeState?: Pick<LoopCheckpoint, 'acted' | 'nudgesLeft' | 'round'>
+}
+
+/** A run's state between rounds — enough to continue it. */
+export interface LoopCheckpoint {
+  messages: ChatMessage[]
+  round: number
+  acted: boolean
+  nudgesLeft: number
+  done: boolean
 }
 
 export interface LoopOutcome {
@@ -105,11 +128,18 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
   const parallelNames = new Set(opts.tools.filter(t => t.readOnly).map(t => t.spec.function.name))
   const actingNames = new Set(opts.tools.filter(t => t.acts ?? !t.readOnly).map(t => t.spec.function.name))
   const require = opts.requireAction ? (typeof opts.requireAction === 'object' ? opts.requireAction : {}) : null
-  let nudgesLeft = require ? (require.nudges ?? 2) : 0
+  let nudgesLeft = opts.resumeState?.nudgesLeft ?? (require ? (require.nudges ?? 2) : 0)
   const isStopped = () => opts.signal?.aborted === true || opts.stopped?.() === true
-  const messages = [...opts.messages]
+  const messages = repairTranscript([...opts.messages])
   let text = ''
-  let acted = false
+  let acted = opts.resumeState?.acted ?? false
+  const save = (round: number, done: boolean) => opts.checkpoint?.({ messages: [...messages], round, acted, nudgesLeft, done })
+  const fit = async () => {
+    const c = opts.context ?? {}
+    pruneOldImages(messages, c.keepImageTurns)
+    if (c.compact) await compactTranscript(messages, c.compact)
+    fitImagesToBudget(messages, (c.maxRequestChars ?? 4_300_000) - JSON.stringify(specs).length)
+  }
 
   const call = async (msgs: ChatMessage[], tools: ChatToolSpec[]) => {
     const retries = opts.modelRetries ?? 2
@@ -127,9 +157,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
     }
   }
 
-  for (let round = 0; maxRounds === 0 || round < maxRounds; round++) {
-    if (isStopped()) return { messages, text, rounds: round, exhausted: false, stopped: true, acted }
+  for (let round = opts.resumeState?.round ?? 0; maxRounds === 0 || round < maxRounds; round++) {
+    if (isStopped()) { await save(round, true); return { messages, text, rounds: round, exhausted: false, stopped: true, acted } }
     for (const note of opts.drainNotifications?.() ?? []) messages.push({ role: 'user', content: note })
+    await fit()
     opts.hooks?.onAssistantStart?.(round)
 
     const turn = await call(messages, specs)
@@ -153,8 +184,10 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
         const nudge = require.message ?? DEFAULT_ACTION_NUDGE
         opts.hooks?.onNudge?.(nudge)
         messages.push({ role: 'user', content: nudge })
+        await save(round + 1, false)
         continue
       }
+      await save(round + 1, true)
       return { messages, text, rounds: round + 1, exhausted: false, stopped: false, acted }
     }
 
@@ -165,6 +198,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
       if (isStopped()) {
         // Answer the unanswered calls so the transcript stays valid for a resume.
         for (const c of calls) if (!messages.some(m => m.role === 'tool' && m.tool_call_id === c.id)) messages.push({ role: 'tool', tool_call_id: c.id, name: c.name, content: JSON.stringify({ error: 'stopped' }) })
+        await save(round + 1, true)
         return { messages, text, rounds: round + 1, exhausted: false, stopped: true, acted }
       }
       for (const info of batch) opts.hooks?.onToolStart?.(info)
@@ -193,11 +227,35 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
     }
     for (const m of imageTurns) messages.push(m)
     opts.hooks?.onRoundEnd?.(round)
+    await save(round + 1, false)
   }
 
   // Out of rounds with tools still pending: wrap up in words, so the user gets an answer.
   messages.push({ role: 'user', content: 'You have reached the tool limit for this turn. Summarise what you changed and what is left, without calling more tools.' })
   const final = await call(messages, [])
   messages.push({ role: 'assistant', content: final.text })
+  await save(maxRounds, true)
   return { messages, text: final.text, rounds: maxRounds, exhausted: true, stopped: false, acted }
+}
+
+/**
+ * Make a transcript valid to continue: a run cut off mid-round has tool calls without results, which every provider
+ * refuses. Each missing result is answered as interrupted, so the model sees what happened and can redo it.
+ */
+export function repairTranscript(messages: ChatMessage[]): ChatMessage[] {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.role !== 'assistant' || !m.tool_calls?.length) continue
+    let j = i + 1
+    const answered = new Set<string>()
+    while (j < messages.length && messages[j].role === 'tool') { answered.add(messages[j].tool_call_id ?? ''); j++ }
+    const missing = m.tool_calls.filter(c => !answered.has(c.id))
+    if (!missing.length) continue
+    messages.splice(j, 0, ...missing.map(c => ({
+      role: 'tool' as const, tool_call_id: c.id, name: c.function.name,
+      content: JSON.stringify({ error: 'interrupted: this call did not finish (the session was interrupted). Check its effect and run it again if needed.' }),
+    })))
+    i = j + missing.length - 1
+  }
+  return messages
 }

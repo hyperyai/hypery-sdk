@@ -2,7 +2,7 @@
 // implementer or debugger). Instructions are product-neutral; a host adds its context through `childSystemPrompt`.
 // `tools: ['*']` means every tool the host offers children; read-only types get only its read-only tools.
 
-import type { AgentProfile } from './types'
+import type { AgentProfile } from './types.js'
 
 export const PLANNER: AgentProfile = {
   id: 'planner',

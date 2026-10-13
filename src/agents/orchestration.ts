@@ -2,9 +2,9 @@
 // task / await_job), bound to an AgentRuntime. A host adds them to its own tool list; `execOrchestrationTool` runs
 // one. Parent-only: a child never gets them.
 
-import type { LoopTool } from './loop'
-import type { AgentRuntime } from './runtime'
-import type { ToolCall, ToolRun } from './types'
+import type { LoopTool } from './loop.js'
+import type { AgentRuntime } from './runtime.js'
+import type { ToolCall, ToolRun } from './types.js'
 
 export const ORCHESTRATION_TOOLS = ['task', 'send_message', 'stop_agent', 'list_agents', 'await_agent'] as const
 
