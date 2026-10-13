@@ -1,6 +1,6 @@
 'use client';
 
-import { ParsedError } from '../types';
+import { ParsedError } from '../types/index.js';
 
 /** Props of {@link InsufficientCreditsAlert}. */
 export interface InsufficientCreditsAlertProps {

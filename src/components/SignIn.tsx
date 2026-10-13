@@ -6,7 +6,7 @@
 'use client';
 
 import React from 'react';
-import { useHyperyAuth } from '../lib/context';
+import { useHyperyAuth } from '../lib/context.js';
 
 export interface SignInProps {
   /** Button text */

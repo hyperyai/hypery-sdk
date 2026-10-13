@@ -10,8 +10,8 @@
 
 import type React from "react";
 import { useState } from "react";
-import { useCheckout, type CheckoutResult } from "../hooks/useCheckout";
-import type { BrandingConfig, ParsedError } from "../types";
+import { useCheckout, type CheckoutResult } from "../hooks/useCheckout.js";
+import type { BrandingConfig, ParsedError } from "../types/index.js";
 
 /** Props of {@link SubscribeButton}. */
 export interface SubscribeButtonProps {

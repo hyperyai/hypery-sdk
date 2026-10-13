@@ -8,7 +8,7 @@
  * default is unchanged.
  */
 
-import type { PostLogoutRedirect } from '../types';
+import type { PostLogoutRedirect } from '../types/index.js';
 
 /** The historical destination — kept as the default so behaviour is unchanged. */
 export const DEFAULT_POST_LOGOUT_REDIRECT = '/';

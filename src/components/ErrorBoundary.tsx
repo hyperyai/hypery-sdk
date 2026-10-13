@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { parseError } from '../lib/parse-error';
-import { SpendingLimitAlert } from './SpendingLimitAlert';
-import { InsufficientCreditsAlert } from './InsufficientCreditsAlert';
+import { parseError } from '../lib/parse-error.js';
+import { SpendingLimitAlert } from './SpendingLimitAlert.js';
+import { InsufficientCreditsAlert } from './InsufficientCreditsAlert.js';
 
 /** Props of {@link ErrorBoundary}. */
 export interface ErrorBoundaryProps {

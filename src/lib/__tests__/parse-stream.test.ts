@@ -3,12 +3,12 @@ import {
   isPermissionDeniedError,
   isRateLimitError,
   parseError,
-} from "../parse-error";
+} from "../parse-error.js";
 import {
   consumeSSEStream,
   parseSSEError,
   parseSSEFrame,
-} from "../parse-stream";
+} from "../parse-stream.js";
 
 describe("parseError — new classifications", () => {
   test("PERMISSION_DENIED envelope → isPermissionDenied, not isAuth", () => {

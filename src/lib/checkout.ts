@@ -2,7 +2,7 @@
  * Pure checkout helpers shared by useCheckout (kept React-free for testing).
  */
 
-import type { ParsedError } from '../types';
+import type { ParsedError } from '../types/index.js';
 
 /** How often a subscription is billed. Grants are issued monthly either way. */
 export type PlanInterval = 'month' | 'year';

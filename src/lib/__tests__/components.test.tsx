@@ -1,12 +1,12 @@
 import { describe, expect, it, mock } from 'bun:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { shouldStartSignIn } from '../../components/control';
-import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { SignInForm } from '../../components/SignInForm';
-import { ModernAuthForm } from '../../components/ModernAuthForm';
-import { HyperyProvider } from '../context';
-import { loginOptionsFor, shouldFireAuthSuccess } from '../sign-in-attempt';
+import { shouldStartSignIn } from '../../components/control.js';
+import { ErrorBoundary } from '../../components/ErrorBoundary.js';
+import { SignInForm } from '../../components/SignInForm.js';
+import { ModernAuthForm } from '../../components/ModernAuthForm.js';
+import { HyperyProvider } from '../context.js';
+import { loginOptionsFor, shouldFireAuthSuccess } from '../sign-in-attempt.js';
 
 const config = { clientId: 'c', redirectUri: 'https://app.test/cb', gatewayUrl: 'https://gw.test', storage: 'memory' as const };
 

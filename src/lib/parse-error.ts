@@ -1,4 +1,4 @@
-import { ErrorData, ParsedError } from '../types';
+import { ErrorData, ParsedError } from '../types/index.js';
 
 const SPENDING_LIMIT = 'SPENDING_LIMIT_EXCEEDED';
 const INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS';

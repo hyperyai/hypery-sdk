@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { parseError } from '../lib/parse-error';
-import type { ParsedError } from '../types';
+import { parseError } from '../lib/parse-error.js';
+import type { ParsedError } from '../types/index.js';
 
 /** Return value of {@link useError}. */
 export interface UseErrorReturn {

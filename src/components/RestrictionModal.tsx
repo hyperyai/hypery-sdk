@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import type { WalletState } from '../hooks/useWallet';
-import { errorMessageFromBody } from '../lib/gateway';
+import type { WalletState } from '../hooks/useWallet.js';
+import { errorMessageFromBody } from '../lib/gateway.js';
 
 /**
  * Flat error object accepted by {@link RestrictionModal}: `code`/`message`

@@ -1,7 +1,7 @@
 'use client';
 
-import { ParsedError } from '../types';
-import { formatTimeUntilReset } from '../lib/parse-error';
+import { ParsedError } from '../types/index.js';
+import { formatTimeUntilReset } from '../lib/parse-error.js';
 
 /** Props of {@link SpendingLimitAlert}. */
 export interface SpendingLimitAlertProps {

@@ -20,14 +20,14 @@
 
 import React, { useCallback, useState } from 'react';
 import { ChevronsUpDown, Check, Building2, User as UserIcon } from 'lucide-react';
-import { useHyperyAuth } from '../lib/context';
-import { resolveGatewayUrl } from '../lib/gateway';
+import { useHyperyAuth } from '../lib/context.js';
+import { resolveGatewayUrl } from '../lib/gateway.js';
 import {
   useMemberships,
   setActiveWorkspace,
   type MembershipEntry,
   type MembershipWorkspace,
-} from '../hooks/useMemberships';
+} from '../hooks/useMemberships.js';
 
 /** Props of {@link WorkspaceSwitcher}. */
 export interface WorkspaceSwitcherProps {

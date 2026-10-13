@@ -18,7 +18,7 @@
  */
 
 // Provider & Hooks
-export { HyperyProvider, useHyperyAuth, useUser } from './lib/context';
+export { HyperyProvider, useHyperyAuth, useUser } from './lib/context.js';
 export {
   useAuth,
   useMemberships,
@@ -29,7 +29,7 @@ export {
   useMarketplace,
   useCheckout,
   useAppSubscription,
-} from './hooks';
+} from './hooks/index.js';
 export type {
   MembershipEntry,
   MembershipTeam,
@@ -62,54 +62,54 @@ export type {
   AppSubscriptionGrantBalance,
   UseAppSubscriptionReturn,
   UseAppSubscriptionOptions,
-} from './hooks';
+} from './hooks/index.js';
 
 // Auth Components
-export { SignIn } from './components/SignIn';
-export { SignUp } from './components/SignUp';
-export { SignInForm } from './components/SignInForm';
-export { UserButton } from './components/UserButton';
-export { UserProfile } from './components/UserProfile';
-export { SignedIn, SignedOut, RedirectToSignIn, Protect } from './components/control';
-export { AuthModal } from './components/AuthModal';
-export type { AuthModalProps } from './components/AuthModal';
-export { AuthButton } from './components/AuthButton';
-export type { AuthButtonProps } from './components/AuthButton';
-export { ModernAuthForm } from './components/ModernAuthForm';
-export type { ModernAuthFormProps } from './components/ModernAuthForm';
-export { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher';
+export { SignIn } from './components/SignIn.js';
+export { SignUp } from './components/SignUp.js';
+export { SignInForm } from './components/SignInForm.js';
+export { UserButton } from './components/UserButton.js';
+export { UserProfile } from './components/UserProfile.js';
+export { SignedIn, SignedOut, RedirectToSignIn, Protect } from './components/control.js';
+export { AuthModal } from './components/AuthModal.js';
+export type { AuthModalProps } from './components/AuthModal.js';
+export { AuthButton } from './components/AuthButton.js';
+export type { AuthButtonProps } from './components/AuthButton.js';
+export { ModernAuthForm } from './components/ModernAuthForm.js';
+export type { ModernAuthFormProps } from './components/ModernAuthForm.js';
+export { WorkspaceSwitcher } from './components/WorkspaceSwitcher.js';
+export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher.js';
 
 // "Buy with Hypery" marketplace checkout button.
-export { BuyButton } from './components/BuyButton';
-export type { BuyButtonProps } from './components/BuyButton';
+export { BuyButton } from './components/BuyButton.js';
+export type { BuyButtonProps } from './components/BuyButton.js';
 
 // Subscribe to an app's plan via Hypery.
-export { planPriceCents } from './lib/checkout';
-export { SubscribeButton } from './components/SubscribeButton';
-export type { SubscribeButtonProps } from './components/SubscribeButton';
+export { planPriceCents } from './lib/checkout.js';
+export { SubscribeButton } from './components/SubscribeButton.js';
+export type { SubscribeButtonProps } from './components/SubscribeButton.js';
 
 // Error Components
-export { RestrictionModal } from './components/RestrictionModal';
-export type { RestrictionError } from './components/RestrictionModal';
+export { RestrictionModal } from './components/RestrictionModal.js';
+export type { RestrictionError } from './components/RestrictionModal.js';
 
 // Turnkey modal host — mount once for automatic billing/auth modals driven by
 // authenticatedFetch (issue #42).
-export { HyperyModals } from './components/HyperyModals';
-export type { HyperyModalsProps } from './components/HyperyModals';
+export { HyperyModals } from './components/HyperyModals.js';
+export type { HyperyModalsProps } from './components/HyperyModals.js';
 
-export { SpendingLimitAlert } from './components/SpendingLimitAlert';
-export type { SpendingLimitAlertProps } from './components/SpendingLimitAlert';
+export { SpendingLimitAlert } from './components/SpendingLimitAlert.js';
+export type { SpendingLimitAlertProps } from './components/SpendingLimitAlert.js';
 
-export { InsufficientCreditsAlert } from './components/InsufficientCreditsAlert';
-export type { InsufficientCreditsAlertProps } from './components/InsufficientCreditsAlert';
+export { InsufficientCreditsAlert } from './components/InsufficientCreditsAlert.js';
+export type { InsufficientCreditsAlertProps } from './components/InsufficientCreditsAlert.js';
 
-export { ErrorBoundary } from './components/ErrorBoundary';
-export type { ErrorBoundaryProps } from './components/ErrorBoundary';
+export { ErrorBoundary } from './components/ErrorBoundary.js';
+export type { ErrorBoundaryProps } from './components/ErrorBoundary.js';
 
 // Error Hook
-export { useError } from './hooks/useError';
-export type { UseErrorReturn } from './hooks/useError';
+export { useError } from './hooks/useError.js';
+export type { UseErrorReturn } from './hooks/useError.js';
 
 // Types
 export type {
@@ -133,20 +133,20 @@ export type {
   ErrorData,
   ErrorResponse,
   ParsedError,
-} from './types';
+} from './types/index.js';
 
 // Utilities (for advanced usage)
 export {
   resolvePostLogoutRedirect,
   DEFAULT_POST_LOGOUT_REDIRECT,
-} from './lib/logout-redirect';
-export { TokenStorage } from './lib/storage';
+} from './lib/logout-redirect.js';
+export { TokenStorage } from './lib/storage.js';
 export {
   getAuthorizationUrl,
   exchangeCodeForToken,
   refreshAccessToken,
   getUserInfo,
-} from './lib/oauth';
+} from './lib/oauth.js';
 
 // Error Utilities
 export {
@@ -160,10 +160,10 @@ export {
   isRateLimitError,
   isBillingRestriction,
   formatTimeUntilReset,
-} from './lib/parse-error';
+} from './lib/parse-error.js';
 
 // Streaming (SSE) error classification — surface a terminal mid-stream error in
 // the same classified shape as a non-streaming failure (issue #44).
-export { parseSSEError, parseSSEFrame, consumeSSEStream } from './lib/parse-stream';
-export type { SSEEvent, SSEStreamHandlers } from './lib/parse-stream';
+export { parseSSEError, parseSSEFrame, consumeSSEStream } from './lib/parse-stream.js';
+export type { SSEEvent, SSEStreamHandlers } from './lib/parse-stream.js';
 

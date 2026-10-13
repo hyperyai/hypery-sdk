@@ -10,8 +10,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useHyperyAuth } from '../lib/context';
-import { errorMessageFromBody, resolveGatewayUrl } from '../lib/gateway';
+import { useHyperyAuth } from '../lib/context.js';
+import { errorMessageFromBody, resolveGatewayUrl } from '../lib/gateway.js';
 
 /** A workspace the user belongs to. `isActive` is derived from `activeWorkspaceId`. */
 export interface MembershipWorkspace {

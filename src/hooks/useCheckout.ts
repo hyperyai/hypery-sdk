@@ -22,10 +22,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useHyperyAuth } from '../lib/context';
-import { closePopup, openBlankPopup, openPopup } from '../lib/popup';
-import { parseError } from '../lib/parse-error';
-import type { ParsedError } from '../types';
+import { useHyperyAuth } from '../lib/context.js';
+import { closePopup, openBlankPopup, openPopup } from '../lib/popup.js';
+import { parseError } from '../lib/parse-error.js';
+import type { ParsedError } from '../types/index.js';
 import {
   CHECKOUT_ENDPOINTS as ENDPOINTS,
   chargeBody,
@@ -42,9 +42,9 @@ import {
   SUBSCRIBE_SESSIONS_PATH,
   withIdempotency,
   type CheckoutInput,
-} from '../lib/checkout';
+} from '../lib/checkout.js';
 
-export type { CheckoutInput, SubscribeSessionResult } from '../lib/checkout';
+export type { CheckoutInput, SubscribeSessionResult } from '../lib/checkout.js';
 
 const PENDING_KEY = 'hypery_pending_checkout';
 const MAX_ATTEMPTS = 3; // auth redirect + card redirect + margin; guards against loops

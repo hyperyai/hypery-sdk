@@ -7,7 +7,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AuthModal } from './AuthModal';
+import { AuthModal } from './AuthModal.js';
 
 /** Props of {@link AuthButton}. */
 export interface AuthButtonProps {

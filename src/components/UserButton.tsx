@@ -6,7 +6,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useUser, useHyperyAuth } from '../lib/context';
+import { useUser, useHyperyAuth } from '../lib/context.js';
 
 export interface UserButtonProps {
   /** Show user info */

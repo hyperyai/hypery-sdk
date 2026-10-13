@@ -8,7 +8,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSignInAttempt } from '../lib/sign-in-attempt';
+import { useSignInAttempt } from '../lib/sign-in-attempt.js';
 
 /** Props of {@link ModernAuthForm}. */
 export interface ModernAuthFormProps {

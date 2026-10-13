@@ -7,8 +7,8 @@
 'use client';
 
 import React from 'react';
-import { useSignInAttempt } from '../lib/sign-in-attempt';
-import { useHyperyAuth } from '../lib/context';
+import { useSignInAttempt } from '../lib/sign-in-attempt.js';
+import { useHyperyAuth } from '../lib/context.js';
 
 export interface SignInFormProps {
   /** Custom CSS class */

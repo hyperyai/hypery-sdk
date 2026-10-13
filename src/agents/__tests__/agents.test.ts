@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { runAgentLoop, type LoopTool } from '../loop'
-import { AgentRuntime, REPORT_TOOL, type AgentHost, type AgentSession } from '../runtime'
-import { execOrchestrationTool, orchestrationTools } from '../orchestration'
-import { BUILTIN_PROFILES } from '../profiles'
-import type { CallModel, ChatMessage, ModelTurn } from '../types'
+import { runAgentLoop, type LoopTool } from '../loop.js'
+import { AgentRuntime, REPORT_TOOL, type AgentHost, type AgentSession } from '../runtime.js'
+import { execOrchestrationTool, orchestrationTools } from '../orchestration.js'
+import { BUILTIN_PROFILES } from '../profiles.js'
+import type { CallModel, ChatMessage, ModelTurn } from '../types.js'
 
 const tool = (name: string, readOnly: boolean): LoopTool => ({ readOnly, spec: { type: 'function', function: { name, description: name, parameters: { type: 'object', properties: {} } } } })
 const turn = (text: string, calls: [string, object?][] = []): ModelTurn => ({ text, toolCalls: calls.map(([name, args], i) => ({ id: `${name}-${i}-${Math.random()}`, name, arguments: JSON.stringify(args ?? {}) })) })

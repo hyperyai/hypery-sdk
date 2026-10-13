@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   DEFAULT_POST_LOGOUT_REDIRECT,
   resolvePostLogoutRedirect,
-} from '../logout-redirect';
+} from '../logout-redirect.js';
 
 describe('resolvePostLogoutRedirect', () => {
   it('defaults to "/" when unconfigured (existing consumers are unchanged)', () => {
