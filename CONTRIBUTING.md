@@ -15,7 +15,7 @@ To develop against a consuming app, see "Local development" in the README (yalc)
 Every push to `main` must contain at least one release-triggering commit
 ([conventional commits](https://www.conventionalcommits.org/)): `feat:`, `fix:`,
 `perf:`, or a `BREAKING CHANGE:` footer. CI fails otherwise — versioning and
-release notes are generated from commit messages by semantic-release.
+release notes are generated from commit messages by [sem](https://github.com/tishlang/sem).
 
 ## Releases
 
