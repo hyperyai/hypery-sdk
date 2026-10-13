@@ -35,6 +35,11 @@
       "source": "./src/agents/react.ts",
       "default": "./dist/agents/react.js"
     },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "source": "./src/testing.tsx",
+      "default": "./dist/testing.js"
+    },
     "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },
