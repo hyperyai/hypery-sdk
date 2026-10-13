@@ -39,6 +39,8 @@ export interface AgentSession {
   startedAt: number
   endedAt?: number
   rounds: number
+  /** Limited to read-only tools: its work changes nothing. */
+  readOnly?: boolean
 }
 
 /** Where sessions are kept between reloads (the host's choice: IndexedDB, a file, a database). Optional. */
@@ -151,6 +153,26 @@ export class AgentRuntime {
     return this.sessions.get(id)
   }
 
+  /**
+   * Resolves once the agent is no longer queued or running, or when `timeoutMs` passes or `signal` aborts (then with
+   * the session as it is). `undefined` for an unknown id.
+   */
+  wait(id: string, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<AgentSession | undefined> {
+    const busy = (s: AgentSession | undefined) => s?.status === 'running' || s?.status === 'queued'
+    if (!busy(this.get(id))) return Promise.resolve(this.get(id))
+    return new Promise(resolve => {
+      const finish = () => { unsubscribe(); clearTimeout(timer); opts.signal?.removeEventListener('abort', finish); resolve(this.get(id)) }
+      const unsubscribe = this.subscribe(() => { if (!busy(this.get(id))) finish() })
+      const timer = setTimeout(finish, opts.timeoutMs ?? 120_000)
+      opts.signal?.addEventListener('abort', finish, { once: true })
+    })
+  }
+
+  /** Drop the queued "finished" notice for `id`: the parent already has its answer (await_agent handed it over). */
+  dismissFinished(id: string): void {
+    for (let i = this.parentQueue.length - 1; i >= 0; i--) if (this.parentQueue[i].startsWith(`Agent ${id} (`)) this.parentQueue.splice(i, 1)
+  }
+
   /** Everything queued for the parent (reports, finished background children), taken. */
   drainParentNotifications(): string[] {
     return this.parentQueue.splice(0, this.parentQueue.length)
@@ -176,6 +198,7 @@ export class AgentRuntime {
       inbox: [],
       startedAt: this.now(),
       rounds: 0,
+      readOnly: req.readOnly === true || profile.readOnly === true,
     }
     this.sessions.set(session.id, session)
     this.changed()

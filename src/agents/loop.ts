@@ -211,7 +211,7 @@ export async function runAgentLoop(opts: LoopOptions): Promise<LoopOutcome> {
         }
       }))
       for (const run of runs) {
-        if (run.ok && actingNames.has(run.name)) acted = true
+        if (run.ok && (run.acted ?? actingNames.has(run.name))) acted = true
         opts.hooks?.onToolEnd?.(run)
         messages.push({ role: 'tool', tool_call_id: run.id, name: run.name, content: truncateResult(run.content, maxResultChars) })
         if (run.images?.length) {

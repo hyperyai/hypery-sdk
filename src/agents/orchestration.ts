@@ -43,7 +43,10 @@ export function orchestrationTools(runtime: AgentRuntime, profiles: { id: string
     { readOnly: true, acts: false, spec: fn('list_agents', 'List your agents with their status and last answer.', {}) },
     {
       readOnly: true, acts: false,
-      spec: fn('await_agent', 'Check an agent by id. Never blocks: its status now, and its answer once it has finished. Don\'t poll — finished background agents notify you.', { agent_id: { type: 'string' } }, ['agent_id']),
+      spec: fn('await_agent', 'Wait for an agent by id to finish and get its answer (or its status when the wait times out). Use it when you need the answer before you can go on; otherwise keep working and let it notify you.', {
+        agent_id: { type: 'string' },
+        timeout_seconds: { type: 'number', description: 'How long to wait at most (default 120, at most 600).' },
+      }, ['agent_id']),
     },
   ]
 }
@@ -64,15 +67,18 @@ export async function execOrchestrationTool(runtime: AgentRuntime, call: ToolCal
         background: args.run_in_background === true, readOnly: opts.readOnly === true || args.readonly === true, signal: opts.signal,
       })
       if (r.kind === 'refused') return result(call, 'refused', { error: r.reason }, false)
-      if (r.kind === 'started') return result(call, `${str('subagent_type')} started (${r.id})`, { agent_id: r.id, status: 'running', note: 'Keep working: its answer arrives as a notification.' })
-      return result(call, `${str('subagent_type')}: ${r.ok ? 'done' : 'failed'}`, { agent_id: r.id, ok: r.ok, rounds: r.rounds, answer: r.summary })
+      // Handing work to an agent that can make changes is acting: the parent shouldn't be nudged to redo it.
+      const acted = runtime.get(r.id)?.readOnly === false
+      if (r.kind === 'started') return { ...result(call, `${str('subagent_type')} started (${r.id})`, { agent_id: r.id, status: 'running', note: 'Keep working: its answer arrives as a notification.' }), acted }
+      return { ...result(call, `${str('subagent_type')}: ${r.ok ? 'done' : 'failed'}`, { agent_id: r.id, ok: r.ok, rounds: r.rounds, answer: r.summary }, r.ok), acted }
     }
     case 'send_message': {
       const r = await runtime.message(str('agent_id'), str('message'), { wait: args.wait === true, signal: opts.signal })
       if (r.kind === 'unknown') return result(call, 'unknown agent', { error: `No agent "${str('agent_id')}".` }, false)
-      if (r.kind === 'queued') return result(call, 'delivered', { agent_id: r.id, status: 'running', note: 'It reads this at its next step.' })
-      if (r.kind === 'resumed') return result(call, 'resumed', { agent_id: r.id, status: 'running', note: 'Its answer arrives as a notification.' })
-      return result(call, r.ok ? 'answered' : 'failed', { agent_id: r.id, ok: r.ok, answer: r.summary })
+      const acted = runtime.get(r.id)?.readOnly === false
+      if (r.kind === 'queued') return { ...result(call, 'delivered', { agent_id: r.id, status: 'running', note: 'It reads this at its next step.' }), acted }
+      if (r.kind === 'resumed') return { ...result(call, 'resumed', { agent_id: r.id, status: 'running', note: 'Its answer arrives as a notification.' }), acted }
+      return { ...result(call, r.ok ? 'answered' : 'failed', { agent_id: r.id, ok: r.ok, answer: r.summary }), acted }
     }
     case 'stop_agent': {
       const stopped = runtime.stop(str('agent_id'))
@@ -83,9 +89,12 @@ export async function execOrchestrationTool(runtime: AgentRuntime, call: ToolCal
       return result(call, `${rows.length} agent${rows.length === 1 ? '' : 's'}`, { agents: rows })
     }
     case 'await_agent': {
-      const s = runtime.get(str('agent_id'))
+      const seconds = typeof args.timeout_seconds === 'number' ? Math.min(Math.max(args.timeout_seconds, 1), 600) : 120
+      const s = await runtime.wait(str('agent_id'), { timeoutMs: seconds * 1000, signal: opts.signal })
       if (!s) return result(call, 'unknown agent', { error: `No agent "${str('agent_id')}".` }, false)
-      return result(call, `${s.id}: ${s.status}`, { agent_id: s.id, status: s.status, answer: s.summary, ...(s.status === 'running' ? { note: 'Still running. Carry on; it notifies you when it finishes.' } : {}) })
+      const busy = s.status === 'running' || s.status === 'queued'
+      if (!busy) runtime.dismissFinished(s.id)
+      return result(call, `${s.id}: ${s.status}`, { agent_id: s.id, status: s.status, answer: s.summary, ...(busy ? { note: `Still ${s.status} after ${seconds}s. Carry on; it notifies you when it finishes.` } : {}) })
     }
     default:
       return result(call, 'unknown tool', { error: `${call.name} is not an orchestration tool.` }, false)

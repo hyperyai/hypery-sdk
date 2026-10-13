@@ -51,6 +51,8 @@ export interface ToolRun extends ToolCall {
   content: string
   /** Images to show the model after the round (e.g. a render), as data or https URLs. */
   images?: string[]
+  /** Whether this call changed something, when that depends on the call (delegating to an agent that can make changes). Overrides the tool's `acts`. */
+  acted?: boolean
 }
 
 /**

@@ -24,7 +24,9 @@ Assistant turn → tool calls → results → repeat, until the model is done.
 - **Parallel reads, ordered edits.** Tools marked `readOnly` in one turn run together (up to `maxParallel`); anything
   else runs alone and in order.
 - **Keeps going until it acts** — `requireAction: true`. A turn asked to change something that tries to finish having
-  only read is told to act (twice at most), instead of ending after minutes of reading with nothing done.
+  only read is told to act (twice at most), instead of ending after minutes of reading with nothing done. Handing the
+  work to an agent that can make changes (`task`, `send_message`) counts as acting; a tool result can say so itself
+  with `acted`.
 - **Survives a flaky connection.** A stalled or dropped model stream is retried (`modelRetries`, default 2).
 - **Notifications between rounds** — `drainNotifications`. Finished background agents, agents' reports and questions,
   and messages for this agent arrive here; one arriving just as the model stops gives it another round.
@@ -101,7 +103,7 @@ Add them to the main agent's tools and route their calls to `execOrchestrationTo
 | `send_message` | Message an agent by id (steer / answer / resume). |
 | `stop_agent` | Stop one agent. |
 | `list_agents` | All agents, status, answers. |
-| `await_agent` | One agent's status and answer. Never blocks. |
+| `await_agent` | Waits for one agent to finish and returns its answer (`timeout_seconds`, default 120). The answer is not delivered again as a notification. |
 | `manage_todos` (`todoTool`) | The plan the user sees (`TodoList`). |
 | `build_and_review` (`superviseTool`) | Build → review → fix until it passes. |
 

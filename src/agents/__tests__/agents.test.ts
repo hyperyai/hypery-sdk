@@ -159,3 +159,63 @@ describe('orchestration tools', () => {
     expect((await call('send_message', { agent_id: 'missing', message: 'hi' })).ok).toBe(false)
   })
 })
+
+describe('delegation', () => {
+  it('await_agent waits for a background agent and takes its answer instead of a later notification', async () => {
+    let finish!: () => void
+    const gate = new Promise<void>(r => { finish = r })
+    const h = host(() => [turn('found it')])
+    const model = h.callModel
+    h.callModel = async (...a) => { await gate; return model(...a) }
+    const rt = new AgentRuntime(h)
+    const call = (name: string, args: object) => execOrchestrationTool(rt, { id: name, name, argsText: JSON.stringify(args) })
+    const t = JSON.parse((await call('task', { subagent_type: 'explorer', prompt: 'look', run_in_background: true })).content)
+    const waited = call('await_agent', { agent_id: t.agent_id })
+    setTimeout(finish, 20)
+    const r = JSON.parse((await waited).content)
+    expect(r).toMatchObject({ status: 'done', answer: 'found it' })
+    expect(rt.drainParentNotifications()).toEqual([])
+    expect(JSON.parse((await call('await_agent', { agent_id: t.agent_id, timeout_seconds: 1 })).content).status).toBe('done')
+  })
+
+  it('times out with the status when the agent is still running', async () => {
+    const h = host(() => [])
+    h.callModel = () => new Promise(() => {})
+    const rt = new AgentRuntime(h)
+    const call = (name: string, args: object) => execOrchestrationTool(rt, { id: name, name, argsText: JSON.stringify(args) })
+    const t = JSON.parse((await call('task', { subagent_type: 'builder', prompt: 'work', run_in_background: true })).content)
+    const r = JSON.parse((await call('await_agent', { agent_id: t.agent_id, timeout_seconds: 1 })).content)
+    expect(r.status).toBe('running')
+    rt.stopAll()
+  })
+
+  it('handing work to a builder counts as acting, so requireAction does not nudge the parent to redo it', async () => {
+    const rt = new AgentRuntime(host(() => [turn('', [['edit']]), turn('built it')]))
+    const parent = scripted([turn('', [['task', { subagent_type: 'builder', prompt: 'make it red' }]]), turn('The builder made it red.')])
+    const seen: string[] = []
+    const out = await runAgentLoop({
+      callModel: async (m, ...rest) => { seen.push(String(m[m.length - 1].content)); return parent(m, ...rest) },
+      tools: [tool('edit', false), ...orchestrationTools(rt, BUILTIN_PROFILES)],
+      messages: [{ role: 'user', content: 'make it red' }],
+      requireAction: true,
+      execTool: c => execOrchestrationTool(rt, c),
+    })
+    expect(out.acted).toBe(true)
+    expect(out.text).toBe('The builder made it red.')
+    expect(seen.some(s => s.includes('You have not changed anything'))).toBe(false)
+  })
+
+  it('handing work to a read-only explorer does not count as acting', async () => {
+    const rt = new AgentRuntime(host(() => [turn('it is blue')]))
+    const parent = scripted([turn('', [['task', { subagent_type: 'explorer', prompt: 'what colour' }]]), turn('It is blue.'), turn('', [['edit']]), turn('Made it red.')])
+    const out = await runAgentLoop({
+      callModel: parent,
+      tools: [tool('edit', false), ...orchestrationTools(rt, BUILTIN_PROFILES)],
+      messages: [{ role: 'user', content: 'make it red' }],
+      requireAction: true,
+      execTool: async c => (c.name === 'edit' ? { ...c, ok: true, summary: 'ok', content: '{}' } : execOrchestrationTool(rt, c)),
+    })
+    expect(out.acted).toBe(true)
+    expect(out.text).toBe('Made it red.')
+  })
+})
