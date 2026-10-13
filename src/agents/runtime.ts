@@ -41,6 +41,8 @@ export interface AgentSession {
   rounds: number
   /** Limited to read-only tools: its work changes nothing. */
   readOnly?: boolean
+  /** The parent's tool call that started it (`task`), so a UI can nest its progress under that call. */
+  parentCallId?: string
 }
 
 /** Where sessions are kept between reloads (the host's choice: IndexedDB, a file, a database). Optional. */
@@ -59,6 +61,11 @@ export interface ChildRunContext {
 
 export interface AgentHost {
   callModel: CallModel
+  /**
+   * The model call for one child, from its profile's `model` (`'inherit'`, `'fast'` or an id): a host that runs
+   * read-only surveys on a cheaper model returns that here. Absent, or `undefined` returned, = `callModel`.
+   */
+  childModel?: (ctx: ChildRunContext) => CallModel | undefined
   profiles: () => AgentProfile[]
   /** The tools a child of `profile` may call (the runtime adds `report_to_parent`). */
   childTools: (ctx: ChildRunContext) => LoopTool[]
@@ -87,6 +94,8 @@ export interface SpawnRequest {
   readOnly?: boolean
   /** Stops the child too when it aborts (the parent's Stop). */
   signal?: AbortSignal
+  /** The parent's tool call starting it, kept on the session (see `AgentSession.parentCallId`). */
+  parentCallId?: string
 }
 
 export type SpawnResult =
@@ -199,6 +208,7 @@ export class AgentRuntime {
       startedAt: this.now(),
       rounds: 0,
       readOnly: req.readOnly === true || profile.readOnly === true,
+      ...(req.parentCallId ? { parentCallId: req.parentCallId } : {}),
     }
     this.sessions.set(session.id, session)
     this.changed()
@@ -311,7 +321,7 @@ export class AgentRuntime {
       const outcome = await runAgentLoop({
         messages,
         tools,
-        callModel: this.host.callModel,
+        callModel: this.host.childModel?.(ctx) ?? this.host.callModel,
         signal: controller.signal,
         maxRounds: profile.maxRounds || this.host.maxRounds || 30,
         drainNotifications: () => session.inbox.splice(0, session.inbox.length).map(t => `Message from the main agent:\n${t}`),

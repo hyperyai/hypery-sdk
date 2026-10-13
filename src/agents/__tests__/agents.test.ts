@@ -219,3 +219,18 @@ describe('delegation', () => {
     expect(out.text).toBe('Made it red.')
   })
 })
+
+describe('host choices per child', () => {
+  it('runs a child on the model the host picks for its profile, and keeps the parent call that started it', async () => {
+    const h = host(() => [turn('main model')])
+    const used: string[] = []
+    const fast: CallModel = async () => { used.push('fast'); return turn('surveyed on the fast model') }
+    h.childModel = ctx => (ctx.profile.model === 'fast' ? fast : undefined)
+    const rt = new AgentRuntime(h)
+    const survey = JSON.parse((await execOrchestrationTool(rt, { id: 'call-1', name: 'task', argsText: JSON.stringify({ subagent_type: 'explorer', prompt: 'survey' }) })).content)
+    expect(survey.answer).toBe('surveyed on the fast model')
+    expect(rt.get(survey.agent_id)?.parentCallId).toBe('call-1')
+    await execOrchestrationTool(rt, { id: 'call-2', name: 'task', argsText: JSON.stringify({ subagent_type: 'builder', prompt: 'build' }) })
+    expect(used).toEqual(['fast'])
+  })
+})
