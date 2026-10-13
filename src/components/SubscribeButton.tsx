@@ -12,6 +12,8 @@ import type React from "react";
 import { useState } from "react";
 import { useCheckout, type CheckoutResult } from "../hooks/useCheckout.js";
 import type { BrandingConfig, ParsedError } from "../types/index.js";
+import { cn } from "../lib/utils.js";
+import { ROOT, Spinner, brandStyle, buttonSizes, buttonVariants } from "./ui/primitives.js";
 
 /** Props of {@link SubscribeButton}. */
 export interface SubscribeButtonProps {
@@ -84,40 +86,25 @@ export function SubscribeButton({
     void run();
   };
 
-  const primaryColor = branding?.primaryColor;
-  const style = primaryColor ? { backgroundColor: primaryColor } : undefined;
   const price = priceText(priceCents, interval);
   const buttonLabel = isRunning ? "Processing…" : armed ? `Confirm${price}` : (label ?? `Subscribe${price}`);
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className={cn(ROOT, "hy:inline-flex hy:items-center hy:gap-2")} style={brandStyle(branding?.primaryColor)}>
       <button
         type="button"
         onClick={handleClick}
         disabled={isRunning}
-        style={style}
-        className={`
-        inline-flex items-center justify-center gap-2
-        px-6 py-2.5 text-base rounded-lg font-medium transition-all
-        text-white shadow-md hover:shadow-lg
-        ${primaryColor ? "" : "bg-purple-600 hover:bg-purple-700"}
-        disabled:opacity-60 disabled:cursor-not-allowed
-        ${className}
-      `}
+        className={cn(buttonVariants.primary, buttonSizes.lg, className)}
       >
-        {isRunning && (
-          <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-            aria-hidden="true"
-          />
-        )}
+        {isRunning && <Spinner />}
         {buttonLabel}
       </button>
       {armed && !isRunning && (
         <button
           type="button"
           onClick={() => setArmed(false)}
-          className="px-3 py-2.5 text-sm rounded-lg font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+          className={cn(buttonVariants.ghost, buttonSizes.lg)}
         >
           Cancel
         </button>

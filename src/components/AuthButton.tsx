@@ -8,6 +8,8 @@
 
 import React, { useState } from 'react';
 import { AuthModal } from './AuthModal.js';
+import { cn } from '../lib/utils.js';
+import { ROOT, brandStyle, buttonSizes, buttonVariants } from './ui/primitives.js';
 
 /** Props of {@link AuthButton}. */
 export interface AuthButtonProps {
@@ -69,16 +71,16 @@ export function AuthButton({
   const [isOpen, setIsOpen] = useState(false);
 
   const sizeClasses = {
-    sm: 'px-4 py-2 text-sm',
-    md: 'px-6 py-2.5 text-base',
-    lg: 'px-8 py-3 text-lg',
+    sm: buttonSizes.sm,
+    md: buttonSizes.lg,
+    lg: buttonSizes.xl,
   };
 
   const variantClasses = {
-    primary: 'bg-purple-600 hover:bg-purple-700 text-white shadow-md hover:shadow-lg',
-    secondary: 'bg-gray-600 hover:bg-gray-700 text-white shadow-md hover:shadow-lg',
-    outline: 'border-2 border-purple-600 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30',
-    ghost: 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
+    primary: buttonVariants.primary,
+    secondary: buttonVariants.secondary,
+    outline: buttonVariants.outline,
+    ghost: buttonVariants.ghost,
   };
 
   const handleClick = () => {
@@ -90,12 +92,8 @@ export function AuthButton({
       <button
         onClick={handleClick}
         type="button"
-        className={`
-          ${sizeClasses[size]}
-          ${variantClasses[variant]}
-          rounded-lg font-medium transition-all
-          ${className}
-        `}
+        className={cn(ROOT, variantClasses[variant], sizeClasses[size], className)}
+        style={brandStyle(branding?.primaryColor)}
       >
         {children}
       </button>

@@ -5,7 +5,12 @@ Drop-in authentication, checkout and error handling for React apps built on
 on their behalf, charge them (one-off purchases, credit top-ups, subscriptions)
 and resolve billing/auth errors with ready-made UI.
 
-![Auth components — SignInForm and AuthModal](./docs/screenshots/authmodal-open.png)
+| | Light | Dark |
+|---|---|---|
+| `AuthModal` | <img src="https://raw.githubusercontent.com/hyperyai/hypery-sdk/main/docs/images/auth-modal-light.png" alt="AuthModal, light" width="360"> | <img src="https://raw.githubusercontent.com/hyperyai/hypery-sdk/main/docs/images/auth-modal-dark.png" alt="AuthModal, dark" width="360"> |
+| `SignInForm` | <img src="https://raw.githubusercontent.com/hyperyai/hypery-sdk/main/docs/images/sign-in-form-light.png" alt="SignInForm, light" width="360"> | <img src="https://raw.githubusercontent.com/hyperyai/hypery-sdk/main/docs/images/sign-in-form-dark.png" alt="SignInForm, dark" width="360"> |
+
+More in the [component gallery](./docs/COMPONENTS.md).
 
 ## Installation
 
@@ -16,7 +21,8 @@ npm install @hyperyai/sdk
 Peer dependencies: `react` and `react-dom` 18 or 19. The package ships compiled
 JavaScript with type declarations (plus the TypeScript source under `src/` for
 reference), so no `transpilePackages` or build configuration is needed.
-Components use Tailwind utility classes for their default styling.
+The components ship their own stylesheet: import `@hyperyai/sdk/styles.css` once
+(see [Styling](#styling)); your app doesn't need Tailwind.
 
 ## Quick start
 
@@ -95,6 +101,57 @@ import { BuyButton, SubscribeButton } from '@hyperyai/sdk';
 ```
 
 Add `billing:charge` to `config.scopes` for checkout.
+
+## Styling
+
+The UI components ship their own stylesheet. Import it once, at your app's root:
+
+```ts
+import '@hyperyai/sdk/styles.css';
+```
+
+It is built with Tailwind 4, but your app doesn't need Tailwind (or any particular version of it): every class is
+prefixed `hy:`, there is no global reset, and only elements inside a component's `.hypery` root are styled.
+
+**Theming.** Components read Hypery's design tokens as `--hy-*` CSS variables. Override any of them to brand:
+
+```css
+.hypery {
+  --hy-primary: oklch(0.55 0.2 290);   /* buttons, links, focus ring */
+  --hy-primary-foreground: white;
+  --hy-ring: oklch(0.55 0.2 290);
+  --hy-radius: 0.75rem;
+}
+```
+
+`branding.primaryColor` on `AuthModal`, `ModernAuthForm`, `AuthButton`, `BuyButton` and `SubscribeButton` sets
+`--hy-primary` for that component only. The full token list is at the top of `src/styles.css`.
+
+**Dark mode.** Components switch to the dark tokens under a `.dark` ancestor (the `class` strategy used by
+next-themes and Tailwind), on `.hypery.dark`, or from the OS preference. If your app has its own light/dark switch,
+put `class="light"` (or `data-theme="light"`) on `<html>` in light mode so the OS preference doesn't override it.
+
+## Testing and Storybook
+
+`@hyperyai/sdk/testing` exports `HyperyTestProvider`, which supplies the same context as
+`HyperyProvider` with a static value, so components and hooks render without a gateway:
+
+```tsx
+import { HyperyTestProvider } from '@hyperyai/sdk/testing';
+
+// signed in
+<HyperyTestProvider user={{ id: 'u_1', name: 'Ada Lovelace', email: 'ada@example.com' }}>
+  <UserButton showUserInfo />
+</HyperyTestProvider>
+
+// signed out (the default), with a spy
+<HyperyTestProvider login={async () => { calls++; }}>
+  <SignIn />
+</HyperyTestProvider>
+```
+
+Every field of `useHyperyAuth()` can be passed as a prop; methods default to no-ops that resolve. The
+screenshots in these docs are rendered this way.
 
 ## Documentation
 

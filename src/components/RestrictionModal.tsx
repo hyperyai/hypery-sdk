@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { WalletState } from '../hooks/useWallet.js';
 import { errorMessageFromBody } from '../lib/gateway.js';
+import { Check, CreditCard, Gauge, X } from 'lucide-react';
+import { cn } from '../lib/utils.js';
+import { ErrorNote, ROOT, Spinner, buttonSizes, buttonVariants } from './ui/primitives.js';
 
 /**
  * Flat error object accepted by {@link RestrictionModal}: `code`/`message`
@@ -222,152 +225,158 @@ export function RestrictionModal({
   const isPayAsYouGo = mode === 'metered' || mode === 'vag_passthrough';
   const hasCard = !!wallet?.paymentMethod?.exists;
 
+  const primary = cn(buttonVariants.primary, buttonSizes.xl, 'hy:w-full');
+  const secondary = cn(buttonVariants.secondary, buttonSizes.xl, 'hy:w-full');
+  const quiet = cn(buttonVariants.ghost, buttonSizes.md, 'hy:w-full');
+
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm ${overlayClassName}`}>
-      <div className={`relative w-full max-w-md bg-gray-900 border border-gray-700 rounded-lg shadow-2xl ${className}`}>
+    <div
+      className={cn(
+        ROOT,
+        'hy:fixed hy:inset-0 hy:z-50 hy:flex hy:items-center hy:justify-center hy:bg-overlay hy:p-4 hy:backdrop-blur-[2px] hy:animate-hy-overlay-in',
+        overlayClassName,
+      )}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hypery-restriction-title"
+        className={cn(
+          'hy:relative hy:w-full hy:max-w-md hy:animate-hy-pop-in hy:rounded-2xl hy:bg-popover hy:p-7 hy:text-popover-foreground hy:shadow-xl',
+          className,
+        )}
+      >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-100 transition-colors z-10"
+          className="hy:absolute hy:right-3.5 hy:top-3.5 hy:z-10 hy:inline-flex hy:size-8 hy:items-center hy:justify-center hy:rounded-md hy:text-subtle-foreground hy:transition-colors hy:outline-none hy:hover:bg-accent hy:hover:text-foreground hy:focus-visible:ring-[3px] hy:focus-visible:ring-ring/50"
           aria-label="Close"
         >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X aria-hidden className="hy:size-4" />
         </button>
 
-        <div className="p-6">
-          <h2 className="text-2xl font-bold text-center mb-4 text-white">{title}</h2>
-
-          {isLoading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-              <span className="ml-3 text-gray-400">Loading your account…</span>
-            </div>
-          )}
-
-          {!isLoading && (
-            <>
-              {/* Wallet summary */}
-              {wallet && (
-                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Available credits</span>
-                    <span className="text-2xl font-bold text-white">{wallet.balance.current}</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-xs text-gray-500">
-                      {isPayAsYouGo ? 'Pay-as-you-go billing' : 'Prepaid balance'}
-                    </span>
-                    {wallet.paymentMethod.exists && (
-                      <span className="text-xs text-gray-500">
-                        {wallet.paymentMethod.brand} •••• {wallet.paymentMethod.last4}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {fetchError && (
-                <p className="text-sm text-red-400 mb-4">⚠️ {fetchError}</p>
-              )}
-              {actionError && (
-                <p className="text-sm text-red-400 mb-4">⚠️ {actionError}</p>
-              )}
-
-              {/* Context message */}
-              {!funded && (
-                <p className="text-sm text-gray-400 text-center mb-5">{error.message}</p>
-              )}
-
-              {/* Actions */}
-              <div className="space-y-3">
-                {funded ? (
-                  <button
-                    onClick={() => {
-                      onRetry?.();
-                      onClose();
-                    }}
-                    className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors font-medium"
-                  >
-                    Continue
-                  </button>
-                ) : isSpendingLimit ? (
-                  <>
-                    <button
-                      onClick={() => openSettings(wallet?.settingsUrls.billing)}
-                      className="w-full px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white border border-gray-600 rounded-lg transition-colors"
-                    >
-                      Manage spending limits
-                    </button>
-                    {onRetry && (
-                      <button
-                        onClick={onRetry}
-                        className="w-full px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white border border-gray-600 rounded-lg transition-colors"
-                      >
-                        Try again
-                      </button>
-                    )}
-                  </>
-                ) : isPayAsYouGo || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
-                  // Metered, or no card on file → capture/update a card first.
-                  <>
-                    <button
-                      onClick={addPaymentMethod}
-                      disabled={busy}
-                      className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-lg transition-colors font-medium"
-                    >
-                      {busy ? 'Opening secure checkout…' : hasCard ? 'Update payment method' : 'Add a payment method'}
-                    </button>
-                    {isPayAsYouGo && (
-                      <p className="text-xs text-gray-500 text-center">
-                        You’ll be billed automatically as you use the service.
-                      </p>
-                    )}
-                    {onRetry && (
-                      <button
-                        onClick={onRetry}
-                        className="w-full px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
-                      >
-                        Try again
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  // Prepaid + card on file → 1-click add funds.
-                  <>
-                    <div className="grid grid-cols-3 gap-2">
-                      {QUICK_AMOUNTS.map((usd) => (
-                        <button
-                          key={usd}
-                          onClick={() => addFunds(usd)}
-                          disabled={busy}
-                          className="px-3 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-lg transition-colors font-medium"
-                        >
-                          ${usd}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => openSettings(wallet?.settingsUrls.topup)}
-                      className="w-full px-4 py-2 text-gray-400 hover:text-white text-sm transition-colors"
-                    >
-                      Other amount…
-                    </button>
-                  </>
-                )}
-
-                {!funded && (
-                  <button
-                    onClick={onClose}
-                    className="w-full px-4 py-2 text-gray-500 hover:text-gray-300 text-sm transition-colors"
-                  >
-                    Close
-                  </button>
-                )}
-              </div>
-            </>
+        <div className="hy:mb-5 hy:flex hy:flex-col hy:items-center hy:gap-3 hy:text-center">
+          <span
+            className={cn(
+              'hy:flex hy:size-11 hy:items-center hy:justify-center hy:rounded-full hy:[&_svg]:size-5',
+              funded
+                ? 'hy:bg-success-subtle hy:text-success-foreground'
+                : isSpendingLimit
+                ? 'hy:bg-warning-subtle hy:text-warning-foreground'
+                : 'hy:bg-primary-subtle hy:text-primary-subtle-foreground',
+            )}
+          >
+            {funded ? <Check aria-hidden /> : isSpendingLimit ? <Gauge aria-hidden /> : <CreditCard aria-hidden />}
+          </span>
+          <h2 id="hypery-restriction-title" className="hy:text-xl hy:font-semibold hy:tracking-tight">
+            {title}
+          </h2>
+          {!funded && !isLoading && (
+            <p className="hy:text-sm hy:text-muted-foreground">{error.message}</p>
           )}
         </div>
+
+        {isLoading && (
+          <div className="hy:flex hy:items-center hy:justify-center hy:gap-3 hy:py-8 hy:text-sm hy:text-muted-foreground">
+            <Spinner className="hy:size-5 hy:text-primary" />
+            Loading your account…
+          </div>
+        )}
+
+        {!isLoading && (
+          <div className="hy:flex hy:flex-col hy:gap-4">
+            {/* Wallet summary */}
+            {wallet && (
+              <div className="hy:rounded-xl hy:bg-surface-sunken hy:p-4">
+                <div className="hy:flex hy:items-baseline hy:justify-between">
+                  <span className="hy:text-sm hy:text-muted-foreground">Available credits</span>
+                  <span className="hy:text-2xl hy:font-semibold hy:tabular-nums hy:tracking-tight">
+                    {wallet.balance.current}
+                  </span>
+                </div>
+                <div className="hy:mt-1 hy:flex hy:items-center hy:justify-between hy:text-xs hy:text-subtle-foreground">
+                  <span>{isPayAsYouGo ? 'Pay-as-you-go billing' : 'Prepaid balance'}</span>
+                  {wallet.paymentMethod.exists && (
+                    <span className="hy:tabular-nums">
+                      {wallet.paymentMethod.brand} •••• {wallet.paymentMethod.last4}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {fetchError && <ErrorNote>{fetchError}</ErrorNote>}
+            {actionError && <ErrorNote>{actionError}</ErrorNote>}
+
+            {/* Actions */}
+            <div className="hy:flex hy:flex-col hy:gap-2">
+              {funded ? (
+                <button
+                  onClick={() => {
+                    onRetry?.();
+                    onClose();
+                  }}
+                  className={primary}
+                >
+                  Continue
+                </button>
+              ) : isSpendingLimit ? (
+                <>
+                  <button onClick={() => openSettings(wallet?.settingsUrls.billing)} className={primary}>
+                    Manage spending limits
+                  </button>
+                  {onRetry && (
+                    <button onClick={onRetry} className={secondary}>
+                      Try again
+                    </button>
+                  )}
+                </>
+              ) : isPayAsYouGo || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
+                // Metered, or no card on file → capture/update a card first.
+                <>
+                  <button onClick={addPaymentMethod} disabled={busy} className={primary}>
+                    {busy && <Spinner />}
+                    {busy ? 'Opening secure checkout…' : hasCard ? 'Update payment method' : 'Add a payment method'}
+                  </button>
+                  {isPayAsYouGo && (
+                    <p className="hy:text-center hy:text-xs hy:text-subtle-foreground">
+                      You’ll be billed automatically as you use the service.
+                    </p>
+                  )}
+                  {onRetry && (
+                    <button onClick={onRetry} className={quiet}>
+                      Try again
+                    </button>
+                  )}
+                </>
+              ) : (
+                // Prepaid + card on file → 1-click add funds.
+                <>
+                  <div className="hy:grid hy:grid-cols-3 hy:gap-2">
+                    {QUICK_AMOUNTS.map((usd) => (
+                      <button
+                        key={usd}
+                        onClick={() => addFunds(usd)}
+                        disabled={busy}
+                        className={cn(buttonVariants.primary, buttonSizes.xl, 'hy:tabular-nums')}
+                      >
+                        ${usd}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => openSettings(wallet?.settingsUrls.topup)} className={quiet}>
+                    Other amount…
+                  </button>
+                </>
+              )}
+
+              {!funded && (
+                <button onClick={onClose} className={quiet}>
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

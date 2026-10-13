@@ -708,26 +708,21 @@ const myBranding = {
 <AuthModal branding={myBranding} />
 ```
 
-### Tailwind CSS Integration
+### Stylesheet
 
-The components use Tailwind classes internally. Make sure Tailwind is configured:
+The components ship their own CSS (Tailwind 4, `hy:`-prefixed, no global reset). Import it once; no Tailwind
+setup is needed in your app:
 
-```javascript
-// tailwind.config.js
-module.exports = {
-  content: [
-    './node_modules/@hyperyai/sdk/**/*.{js,ts,jsx,tsx}',
-    // ... your app paths
-  ],
-};
+```ts
+import '@hyperyai/sdk/styles.css';
 ```
 
 ### Dark Mode
 
-Components automatically adapt to dark mode:
+Components switch to dark tokens under a `.dark` ancestor, on `.hypery.dark`, or from the OS preference
+(opt out with `class="light"` on `<html>`):
 
 ```tsx
-// Works automatically with Tailwind dark mode
 <html className="dark">
   <AuthButton>Sign In</AuthButton>
 </html>
@@ -1027,11 +1022,8 @@ A: Currently supports Google and GitHub. More providers coming soon.
 ### Dark mode not working
 
 ```tsx
-// Ensure Tailwind dark mode is configured
-// tailwind.config.js
-module.exports = {
-  darkMode: 'class', // or 'media'
-};
+// Dark tokens apply under a `.dark` ancestor or with the OS preference.
+// Check that '@hyperyai/sdk/styles.css' is imported, and that no `.light` class is on <html>.
 ```
 
 ---

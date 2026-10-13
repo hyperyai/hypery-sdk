@@ -7,6 +7,8 @@
 
 import React from 'react';
 import { useHyperyAuth } from '../lib/context.js';
+import { cn } from '../lib/utils.js';
+import { ROOT, buttonSizes, buttonVariants } from './ui/primitives.js';
 
 export interface SignUpProps {
   /** Custom button text */
@@ -50,33 +52,13 @@ export function SignUp({
     }
   };
 
-  // Default styles based on variant
-  const getVariantStyles = () => {
-    switch (variant) {
-      case 'secondary':
-        return 'bg-gray-600 hover:bg-gray-700 text-white';
-      case 'outline':
-        return 'border-2 border-blue-600 text-blue-600 hover:bg-blue-50';
-      default:
-        return 'bg-blue-600 hover:bg-blue-700 text-white';
-    }
-  };
-
-  const defaultStyles = `
-    inline-flex items-center justify-center
-    px-6 py-2.5
-    rounded-lg
-    font-medium
-    transition-colors
-    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-    disabled:opacity-50 disabled:cursor-not-allowed
-    ${getVariantStyles()}
-  `.replace(/\s+/g, ' ').trim();
+  // Default styles based on variant (replaced entirely by `className`).
+  const defaultStyles = cn(buttonVariants[variant], buttonSizes.lg);
 
   return (
     <button
       onClick={handleSignUp}
-      className={className || defaultStyles}
+      className={cn(ROOT, className || defaultStyles)}
       type="button"
     >
       {buttonText}

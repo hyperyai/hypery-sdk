@@ -21,6 +21,8 @@
 import React, { useCallback, useState } from 'react';
 import { ChevronsUpDown, Check, Building2, User as UserIcon } from 'lucide-react';
 import { useHyperyAuth } from '../lib/context.js';
+import { cn } from '../lib/utils.js';
+import { ROOT } from './ui/primitives.js';
 import { resolveGatewayUrl } from '../lib/gateway.js';
 import {
   useMemberships,
@@ -96,14 +98,17 @@ export function WorkspaceSwitcher({
     [getAccessToken, resolvedGatewayUrl, onSwitched, reload],
   );
 
+  const trigger =
+    'hy:inline-flex hy:h-9 hy:items-center hy:gap-2 hy:rounded-md hy:bg-field hy:px-3 hy:text-sm hy:transition-colors hy:outline-none hy:focus-visible:ring-[3px] hy:focus-visible:ring-ring/50';
+
   if (isLoading && !data) {
     return (
       <button
         type="button"
         disabled
-        className={`inline-flex items-center gap-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm text-zinc-500 ${className}`}
+        className={cn(ROOT, trigger, 'hy:text-muted-foreground', className)}
       >
-        <span className="size-4 animate-pulse rounded-sm bg-zinc-300 dark:bg-zinc-700" />
+        <span className="hy:size-4 hy:animate-pulse hy:rounded-sm hy:bg-field-hover" />
         Loading workspaces…
       </button>
     );
@@ -114,36 +119,36 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <div className="relative inline-block text-left">
+    <div className={cn(ROOT, 'hy:relative hy:inline-block hy:text-left')}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`inline-flex items-center gap-2 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-medium text-zinc-900 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-blue-500 ${className}`}
+        className={cn(trigger, 'hy:font-medium hy:text-foreground hy:hover:bg-field-hover', className)}
       >
         {activeEntry?.membership.team.isPersonal ? (
-          <UserIcon className="h-4 w-4 text-zinc-500" aria-hidden />
+          <UserIcon className="hy:size-4 hy:text-muted-foreground" aria-hidden />
         ) : (
-          <Building2 className="h-4 w-4 text-zinc-500" aria-hidden />
+          <Building2 className="hy:size-4 hy:text-muted-foreground" aria-hidden />
         )}
-        <span className="truncate max-w-[180px]">
+        <span className="hy:max-w-[180px] hy:truncate">
           {activeEntry ? (
             <>
-              <span className="text-zinc-500">
+              <span className="hy:text-muted-foreground">
                 {activeEntry.membership.team.isPersonal
                   ? 'Personal'
                   : activeEntry.membership.team.name}
               </span>
-              <span className="mx-1.5 text-zinc-300 dark:text-zinc-600">·</span>
+              <span className="hy:mx-1.5 hy:text-subtle-foreground">·</span>
               <span>{activeEntry.workspace.name}</span>
             </>
           ) : (
             'Select workspace'
           )}
         </span>
-        <ChevronsUpDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+        <ChevronsUpDown className="hy:size-3.5 hy:text-subtle-foreground" aria-hidden />
       </button>
 
       {open && (
@@ -154,19 +159,19 @@ export function WorkspaceSwitcher({
             aria-hidden
             tabIndex={-1}
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 cursor-default"
+            className="hy:fixed hy:inset-0 hy:z-40 hy:cursor-default"
           />
           <div
             role="listbox"
-            className="absolute z-50 mt-1 max-h-[28rem] w-72 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg p-1"
+            className="hy:absolute hy:z-50 hy:mt-1.5 hy:max-h-[28rem] hy:w-72 hy:animate-hy-pop-in hy:overflow-y-auto hy:rounded-xl hy:bg-popover hy:p-1 hy:text-popover-foreground hy:shadow-lg hy:ring-1 hy:ring-border"
           >
             {data.memberships.map((m) => (
-              <div key={m.team.id} className="py-1">
-                <div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+              <div key={m.team.id} className="hy:py-1">
+                <div className="hy:flex hy:items-center hy:gap-1.5 hy:px-2 hy:py-1 hy:text-[10px] hy:font-semibold hy:uppercase hy:tracking-wider hy:text-subtle-foreground">
                   {m.team.isPersonal ? (
-                    <UserIcon className="h-3 w-3" />
+                    <UserIcon className="hy:size-3" />
                   ) : (
-                    <Building2 className="h-3 w-3" />
+                    <Building2 className="hy:size-3" />
                   )}
                   {m.team.isPersonal ? 'Personal' : m.team.name}
                 </div>
@@ -181,21 +186,22 @@ export function WorkspaceSwitcher({
                       aria-selected={isActive}
                       disabled={isSwitching}
                       onClick={() => handleSwitch(m.team.id, w.id)}
-                      className={`flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
-                        isActive ? 'bg-zinc-50 dark:bg-zinc-800/60' : ''
-                      } disabled:opacity-50`}
+                      className={cn(
+                        'hy:flex hy:w-full hy:items-center hy:justify-between hy:gap-2 hy:rounded-md hy:px-2 hy:py-1.5 hy:text-left hy:text-sm hy:text-foreground hy:outline-none hy:hover:bg-accent hy:focus-visible:bg-accent hy:disabled:opacity-50',
+                        isActive && 'hy:bg-primary-subtle hy:text-primary-subtle-foreground hy:hover:bg-primary-subtle',
+                      )}
                     >
-                      <span className="flex items-center gap-1.5 truncate">
+                      <span className="hy:flex hy:items-center hy:gap-1.5 hy:truncate">
                         {w.icon && <span aria-hidden>{w.icon}</span>}
-                        <span className="truncate">{w.name}</span>
+                        <span className="hy:truncate">{w.name}</span>
                         {w.isDefault && (
-                          <span className="ml-1 text-[9px] uppercase tracking-wider text-zinc-400">
+                          <span className="hy:ml-1 hy:text-[9px] hy:uppercase hy:tracking-wider hy:text-subtle-foreground">
                             default
                           </span>
                         )}
                       </span>
                       {isActive && (
-                        <Check className="h-3.5 w-3.5 text-blue-600" />
+                        <Check className="hy:size-3.5 hy:text-primary" />
                       )}
                     </button>
                   );

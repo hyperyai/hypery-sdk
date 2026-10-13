@@ -17,17 +17,13 @@ const DialogClose = DialogPrimitive.Close
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
->(({ className, style, ...props }, ref) => (
+>(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 50,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      ...style,
-    }}
-    className={className}
+    className={cn(
+      "hypery hy:fixed hy:inset-0 hy:z-50 hy:bg-overlay hy:backdrop-blur-[2px] hy:data-[state=open]:animate-hy-overlay-in",
+      className
+    )}
     {...props}
   />
 ))
@@ -36,45 +32,22 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, style, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      style={{
-        position: 'fixed',
-        left: '50%',
-        top: '50%',
-        zIndex: 50,
-        display: 'grid',
-        width: '100%',
-        maxWidth: '32rem',
-        transform: 'translate(-50%, -50%)',
-        gap: '1rem',
-        border: '1px solid #e5e7eb',
-        backgroundColor: '#ffffff',
-        padding: '1.5rem',
-        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
-        borderRadius: '0.5rem',
-        ...style,
-      }}
-      className={className}
+      className={cn(
+        // `hypery` here too: the content is portalled out of the component tree.
+        "hypery hy:fixed hy:left-1/2 hy:top-1/2 hy:z-50 hy:grid hy:w-[calc(100%-2rem)] hy:max-w-lg hy:-translate-x-1/2 hy:-translate-y-1/2 hy:gap-4 hy:rounded-2xl hy:bg-popover hy:p-6 hy:text-popover-foreground hy:shadow-xl hy:outline-none hy:data-[state=open]:animate-hy-content-in",
+        className
+      )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close 
-        style={{
-          position: 'absolute',
-          right: '1rem',
-          top: '1rem',
-          opacity: 0.7,
-          cursor: 'pointer',
-          border: 'none',
-          background: 'transparent',
-        }}
-      >
-        <X style={{ width: '1rem', height: '1rem' }} />
-        <span style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', borderWidth: 0 }}>Close</span>
+      <DialogPrimitive.Close className="hy:absolute hy:right-3.5 hy:top-3.5 hy:inline-flex hy:size-8 hy:items-center hy:justify-center hy:rounded-md hy:text-subtle-foreground hy:transition-colors hy:hover:bg-accent hy:hover:text-foreground hy:outline-none hy:focus-visible:ring-[3px] hy:focus-visible:ring-ring/50">
+        <X className="hy:size-4" />
+        <span className="hy:sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
@@ -87,7 +60,7 @@ const DialogHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-1.5 text-center sm:text-left",
+      "hy:flex hy:flex-col hy:gap-1.5 hy:text-center hy:sm:text-left",
       className
     )}
     {...props}
@@ -101,7 +74,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "hy:flex hy:flex-col-reverse hy:gap-2 hy:sm:flex-row hy:sm:justify-end",
       className
     )}
     {...props}
@@ -116,7 +89,7 @@ const DialogTitle = React.forwardRef<
   <DialogPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "hy:text-lg hy:font-semibold hy:leading-tight hy:tracking-tight hy:text-foreground",
       className
     )}
     {...props}
@@ -130,7 +103,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("hy:text-sm hy:text-muted-foreground", className)}
     {...props}
   />
 ))

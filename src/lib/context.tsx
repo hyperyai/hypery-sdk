@@ -49,7 +49,8 @@ function providerHint(options?: LoginOptions): LoginOptions['provider'] {
   return p === 'google' || p === 'github' ? p : undefined;
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+/** @internal Read by `@hyperyai/sdk/testing`; not part of the public entry point. */
+export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /** Props of {@link HyperyProvider}. */
 export interface HyperyProviderProps {
