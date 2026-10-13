@@ -1,4 +1,5 @@
-# Run tests and on main push create a prerelease carrying the npm package tarball.
+# Run tests and on main push create a prerelease carrying the npm package tarball. tishlang/sem decides the version
+# from the Conventional Commits since the last v* tag (fix/perf: patch, feat: minor, breaking: major).
 # When you "Set as latest release" (uncheck prerelease), the npm-release workflow
 # publishes that tarball to npm via OIDC trusted publishing.
 
@@ -69,38 +70,9 @@ jobs:
           FOUND=$(find . -name '.env*' ! -name '.env.example' -not -path './node_modules/*' -not -path './.git/*')
           if [ -n "$FOUND" ]; then echo "env files present:"; echo "$FOUND"; exit 1; fi
 
-  release_check:
-    name: Release check (semantic-release dry-run)
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Require incremental release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx --yes -p semantic-release@25.0.9 -p @semantic-release/commit-analyzer@13.0.1 -p @semantic-release/release-notes-generator@14.1.1 -p @semantic-release/npm@13.2.0 -p @semantic-release/github@12.0.10 semantic-release --dry-run --extends ./.releaserc.json 2>&1 | tee release-check.log
-          if grep -q "There are no relevant changes, so no new version is released." release-check.log; then
-            echo "No incremental release would be triggered. Push commits that trigger a release (feat/fix/perf/BREAKING CHANGE per conventional commits)."
-            exit 1
-          fi
-          echo "Release would be triggered - check passed."
-
   release:
     name: Release (prerelease branch + GitHub API)
-    needs: [test, secret-scan, release_check]
+    needs: [test, secret-scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
@@ -111,32 +83,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Next version (sem, from Conventional Commits since the last v* tag)
+        id: sem
+        uses: tishlang/sem@v1
+        with:
+          dry_run: true
+          tag_format: v${version}
+          config: |
+            branches: [main]
+            plugins:
+              - "@sem/commit-analyzer"
+              - "@sem/release-notes-generator"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Is there a release?
+        id: next_version
+        env:
+          VERSION: ${{ steps.sem.outputs.new_release_version }}
+        run: |
+          # docs/ci/chore/refactor/test-only commits: nothing to publish, not a failure.
+          if [ -z "$VERSION" ]; then echo "::notice::No feat/fix/perf/breaking commit since the last release: nothing to publish."; exit 0; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Next version: $VERSION"
+
       - name: Setup Node
+        if: steps.next_version.outputs.version != ''
         uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Install dependencies
+        if: steps.next_version.outputs.version != ''
         run: npm ci
-
-      - name: Get next version (semantic-release dry-run)
-        id: next_version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx --yes -p semantic-release@25.0.9 -p @semantic-release/commit-analyzer@13.0.1 -p @semantic-release/release-notes-generator@14.1.1 -p @semantic-release/npm@13.2.0 -p @semantic-release/github@12.0.10 semantic-release --dry-run --extends ./.releaserc.json 2>&1 | tee release.log
-          VERSION=$(sed -n 's/.*Published release \([0-9.]*\).*/\1/p' release.log | head -1)
-          if [ -z "$VERSION" ]; then
-            if grep -q "There are no relevant changes, so no new version is released" release.log; then
-              # docs/chore/build-only commits: nothing to publish, not a failure.
-              echo "No release-worthy commits since the last release; skipping."
-              exit 0
-            fi
-            echo "Could not determine next version from semantic-release output"
-            exit 1
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Next version: $VERSION"
 
       - name: Set package version
         if: steps.next_version.outputs.version != ''
@@ -167,23 +146,11 @@ jobs:
           git checkout -B "$BRANCH"
           git push origin "$BRANCH" --force
 
-      - name: Generate release notes from commits
+      - name: Release notes (from sem)
         if: steps.next_version.outputs.version != ''
-        id: changelog
-        run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -n "$LAST_TAG" ]; then
-            CHANGELOG=$(git log "$LAST_TAG..HEAD" --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "")
-          else
-            CHANGELOG=$(git log -30 --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "")
-          fi
-          [ -z "$CHANGELOG" ] && CHANGELOG="- No commits to list"
-          {
-            echo "## Changes"
-            echo ""
-            echo "$CHANGELOG"
-            echo ""
-          } > release-body.md
+        env:
+          NOTES: ${{ steps.sem.outputs.new_release_notes }}
+        run: printf '%s\n' "$NOTES" > release-body.md
 
       - name: Create or update GitHub prerelease via API
         if: steps.next_version.outputs.version != ''
