@@ -19,6 +19,11 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./agents": {
+      "types": "./dist/agents/index.d.ts",
+      "source": "./src/agents/index.ts",
+      "default": "./dist/agents/index.js"
+    },
     "./package.json": "./package.json"
   },
   "sideEffects": false,
@@ -73,6 +78,9 @@
     "checkout",
     "error-handling",
     "spending-limits",
-    "credits"
+    "credits",
+    "agents",
+    "subagents",
+    "agent-loop"
   ]
 }
