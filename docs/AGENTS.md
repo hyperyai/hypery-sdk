@@ -78,7 +78,8 @@ Every agent is a **session**: an id, its transcript, an inbox. The main agent (o
 
 Agents can **report** while they work — progress, or a **question** that needs the main agent's answer
 (`report_to_parent`, `question: true`). Background agents beyond `maxConcurrent` (default 4) wait as `queued`.
-Agents can't start agents of their own (depth 1).
+Agents can't start agents of their own (depth 1). Each session keeps `parentCallId`, the main agent's `task` call
+that started it, so a UI can nest the agent's progress under that call.
 
 ```ts
 const runtime = new AgentRuntime({
@@ -87,6 +88,8 @@ const runtime = new AgentRuntime({
   childTools: ctx => myTools({ readOnly: ctx.readOnly }),            // LoopTool[]
   execChildTool: (call, ctx) => runMyTool(call, ctx.signal),
   childSystemPrompt: ctx => `${ctx.profile.instructions}\n\n${myContext()}`,
+  // Optional: honour the profile's `model` ('fast' surveys on a cheaper model; undefined = callModel).
+  childModel: ctx => (ctx.profile.model === 'fast' ? fastModel : undefined),
   store: sessionStore(indexedDbStore(), conversationId),               // optional
   onEvent: e => panel.update(e),
 })

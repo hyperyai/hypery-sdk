@@ -64,7 +64,7 @@ export async function execOrchestrationTool(runtime: AgentRuntime, call: ToolCal
     case 'task': {
       const r = await runtime.spawn({
         profileId: str('subagent_type'), prompt: str('prompt'), description: str('description') || undefined,
-        background: args.run_in_background === true, readOnly: opts.readOnly === true || args.readonly === true, signal: opts.signal,
+        background: args.run_in_background === true, readOnly: opts.readOnly === true || args.readonly === true, signal: opts.signal, parentCallId: call.id,
       })
       if (r.kind === 'refused') return result(call, 'refused', { error: r.reason }, false)
       // Handing work to an agent that can make changes is acting: the parent shouldn't be nudged to redo it.
