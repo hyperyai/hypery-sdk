@@ -132,7 +132,7 @@ try {
   await runPersistent({ ...runOpts, id: "r1", runs: watched, messages: [{ role: "user", content: "fix both" }] })
 } catch (err) {}
 let cut = await runs.get("r1")
-//FS
+console.log("first save nudges: " + String(firstSave.nudgesLeft))
 console.log("tool save: " + String(Object.keys(cut.checkpoint.toolResults).join(",")) + " acted=" + String(cut.checkpoint.acted))
 crash = false
 let back = await resumeRun("r1", runs, runOpts)

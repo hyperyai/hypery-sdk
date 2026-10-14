@@ -83,3 +83,16 @@ describe('requireAction.maxReadRounds', () => {
     expect(choices[0]).toBe('required')
   })
 })
+
+describe('runPersistent first save', () => {
+  it('saves the real nudge count', async () => {
+    const runs = runStore(memoryStore(), 't')
+    const firsts: any[] = []
+    const watched = { ...runs, save: async (r: any) => { firsts.push(r.checkpoint); return runs.save(r) } }
+    await runPersistent({ id: 'n', runs: watched, messages: [{ role: 'user', content: 'x' }], tools: [tool('edit', false)], execTool: ok, callModel: async () => turn('done'), requireAction: { nudges: 2 } })
+    expect(firsts[0]).toMatchObject({ nudgesLeft: 2, readRounds: 0, mustCallTool: false, toolResults: {} })
+    firsts.length = 0
+    await runPersistent({ id: 'm', runs: watched, messages: [{ role: 'user', content: 'x' }], tools: [tool('edit', false)], execTool: ok, callModel: async () => turn('done'), requireAction: true })
+    expect(firsts[0].nudgesLeft).toBe(2)
+  })
+})
