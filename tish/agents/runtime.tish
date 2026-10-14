@@ -261,6 +261,15 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
   let run = async fn(session: AgentSession, profile: AgentProfile, prompt: string, forceReadOnly: boolean, parentSignal: StopSignal?, fresh: boolean): any {
     let control = typeof host.createSignal === "function" ? host.createSignal() : plainStopControl()
     controls.set(session.id, control)
+    // The parent's Stop stops this child. Its loop checks the parent between rounds on every target; a platform
+    // signal (a JS AbortSignal) also stops it at once, so a model call or tool in flight is cancelled too.
+    if (parentSignal !== null) {
+      if (parentSignal.aborted === true) {
+        control.stop()
+      } else if (typeof parentSignal.addEventListener === "function") {
+        parentSignal.addEventListener("abort", fn() { control.stop() })
+      }
+    }
     let ctx = { session: session, profile: profile, readOnly: forceReadOnly || profile.readOnly === true, signal: control.signal }
     let tools = host.childTools(ctx).concat([REPORT_SPEC])
     let messages = fresh
