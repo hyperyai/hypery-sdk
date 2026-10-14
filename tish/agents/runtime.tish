@@ -81,8 +81,8 @@ export type AgentHost = {
   childTools: (ChildRunContext) => LoopTool[],
   // Run one of the child's tools.
   execChildTool: (ToolCall, ChildRunContext) => Promise<ToolRun>,
-  // The child's system prompt (the profile's instructions plus the host's context).
-  childSystemPrompt: (ChildRunContext) => string,
+  // The child's system prompt (the profile's instructions plus the host's context): a string or a Promise of one.
+  childSystemPrompt: (ChildRunContext) => (string | Promise<string>),
   store: SessionStore?,
   // Every agent's progress, for the host's UI.
   onEvent: ((AgentEvent) => void)?,
@@ -272,15 +272,20 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
     }
     let ctx = { session: session, profile: profile, readOnly: forceReadOnly || profile.readOnly === true, signal: control.signal }
     let tools = host.childTools(ctx).concat([REPORT_SPEC])
-    let messages = fresh
-      ? [{ role: "system", content: host.childSystemPrompt(ctx) }, { role: "user", content: prompt }]
-      : session.transcript.concat([{ role: "user", content: "Message from the main agent:\n" + prompt }])
     let childModel = typeof host.childModel === "function" ? host.childModel(ctx) : null
     let budget = typeof profile.maxRounds === "number" && profile.maxRounds > 0 ? profile.maxRounds : (typeof host.maxRounds === "number" && host.maxRounds > 0 ? host.maxRounds : 30)
     let ok = true
     let summary = ""
     let rounds = 0
+    // Stopped (by id, `stopAll` or the parent's Stop) rather than failed: told by the stop signals, not by what an
+    // aborted call threw (natively a stop surfaces as a thrown error).
+    let wasStopped = fn(): boolean {
+      return control.signal.aborted === true || (parentSignal !== null && parentSignal.aborted === true)
+    }
     try {
+      let messages = fresh
+        ? [{ role: "system", content: await host.childSystemPrompt(ctx) }, { role: "user", content: prompt }]
+        : session.transcript.concat([{ role: "user", content: "Message from the main agent:\n" + prompt }])
       let outcome = await runAgentLoop({
         messages: messages,
         tools: tools,
@@ -316,12 +321,12 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
       ok = !outcome.stopped
     } catch (err) {
       ok = false
-      summary = "(agent error: " + errorMessage(err) + ")"
+      summary = wasStopped() ? "(stopped)" : "(agent error: " + errorMessage(err) + ")"
     }
     controls.delete(session.id)
     session.rounds = session.rounds + rounds
     if (session.status === "running") {
-      session.status = ok ? "done" : "error"
+      session.status = ok ? "done" : (wasStopped() ? "stopped" : "error")
       session.summary = summary
       session.endedAt = now()
     } else {

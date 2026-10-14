@@ -12,7 +12,7 @@
 
 import { delay } from "tish:timers"
 import { utf8Complete, utf8Decode } from "tish:encoding"
-import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, ModelTurn, StopSignal } from "./types.tish"
+import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, ModelRequest, ModelTurn, StopSignal } from "./types.tish"
 
 // Hypery's host refuses request bodies over 4.5 MB (before Hypery runs, without CORS headers).
 export const MAX_REQUEST_BYTES = 4400000
@@ -182,7 +182,7 @@ export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
   let limit = typeof opts.maxRequestBytes === "number" ? opts.maxRequestBytes : MAX_REQUEST_BYTES
   let base = typeof opts.gatewayUrl === "string" && opts.gatewayUrl !== "" ? opts.gatewayUrl : "https://hypery.ai"
   if (base.endsWith("/")) { base = base.slice(0, base.length - 1) }
-  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?): ModelTurn {
+  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest?): ModelTurn {
     let token = await resolve(opts.token)
     if (typeof token !== "string" || token === "") { throw agentModelError("Sign in to Hypery to use the agent.", "ai_reauth", 401) }
     let model = await resolve(opts.model)
@@ -198,7 +198,8 @@ export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
     if (typeof opts.temperature === "number") { request.temperature = opts.temperature }
     if (hasTools) {
       request.tools = tools
-      request.tool_choice = "auto"
+      let choice = req !== null && typeof req === "object" ? (req.toolChoice ?? null) : null
+      request.tool_choice = choice !== null ? choice : "auto"
     }
     let body = JSON.stringify(request)
     if (body.length > limit) {

@@ -24,6 +24,11 @@ fn lastUser(messages: any[]): string {
 async fn model(messages: any[], tools: any[], hooks: any, signal: any): any {
   let task = lastUser(messages)
   let sawTool = messages.some(fn(m) { return m.role === "tool" })
+  if (task.includes("doomed")) {
+    // The parent's Stop lands mid-call, and the call fails the way a native request does: an ordinary error.
+    parentStop.aborted = true
+    throw { name: "Error", message: "connection closed" }
+  }
   if (task.includes("slow")) {
     // Runs until it is stopped (the runtime's stop flag) — a long job.
     while (signal === null || signal.aborted !== true) { await delay(5) }
@@ -37,9 +42,10 @@ async fn model(messages: any[], tools: any[], hooks: any, signal: any): any {
 }
 
 let edits = []
+let parentStop = { aborted: false }
 let rt = createAgentRuntime({
   callModel: model,
-  profiles: fn() { return BUILTIN_PROFILES },
+  profiles: fn() { return BUILTIN_PROFILES.concat([{ id: "watcher", description: "watches", instructions: "Watch.", tools: ["*"], readOnly: true, background: true }]) },
   childTools: fn(ctx) {
     let tools = [{ readOnly: true, spec: { type: "function", "function": { name: "read", description: "read", parameters: {} } } }]
     if (!ctx.readOnly) { tools.push({ readOnly: false, spec: { type: "function", "function": { name: "edit", description: "edit", parameters: {} } } }) }
@@ -49,7 +55,10 @@ let rt = createAgentRuntime({
     edits.push(call.name)
     return { id: call.id, name: call.name, argsText: call.argsText, ok: true, summary: "ok", content: "{}" }
   },
-  childSystemPrompt: fn(ctx) { return ctx.profile.instructions }
+  childSystemPrompt: async fn(ctx) {
+    await delay(1)
+    return ctx.profile.instructions
+  }
 })
 
 // A foreground child: its answer comes straight back.
@@ -84,3 +93,12 @@ console.log("supervised: " + String(sup.passed) + " reviews=" + String(sup.revie
 let acc = createStreamAccumulator()
 acc.push("data: " + JSON.stringify({ choices: [{ delta: { content: "café ✓" } }] }) + "\n\ndata: [DONE]\n\n")
 console.log("stream: " + acc.result().text + " done=" + String(acc.result().sawDone) + " bytes=" + String(utf8Encode("café ✓").length))
+
+// A stop that surfaces as a thrown error is recorded as stopped; the task tool leaves background to the profile.
+let doomed = await rt.spawn({ profileId: "explorer", prompt: "doomed survey", signal: parentStop })
+console.log("thrown stop: " + rt.get(doomed.id).status + " " + doomed.summary)
+let task = fn(args: any): any { return execOrchestrationTool(rt, { id: "t1", name: "task", argsText: JSON.stringify(args) }) }
+let byProfile = JSON.parse((await task({ subagent_type: "watcher", prompt: "look around" })).content)
+let overridden = JSON.parse((await task({ subagent_type: "watcher", prompt: "look around", run_in_background: false })).content)
+let plain = JSON.parse((await task({ subagent_type: "explorer", prompt: "look around" })).content)
+console.log("profile background: " + String(byProfile.status) + " " + String(overridden.ok) + " " + String(plain.ok))

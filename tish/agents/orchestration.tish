@@ -32,7 +32,7 @@ export fn orchestrationTools(runtime: AgentRuntime, profiles: ProfileLine[]): Lo
         subagent_type: { type: "string", description: "One of the agent types above." },
         prompt: { type: "string", description: "The self-contained task." },
         description: { type: "string", description: "A short label, e.g. \"Review the pricing page\"." },
-        run_in_background: { type: "boolean", description: "Return its id now and keep working; its answer arrives as a notification." },
+        run_in_background: { type: "boolean", description: "Return its id now and keep working; its answer arrives as a notification. Leave it out for the agent type's default." },
         readonly: { type: "boolean", description: "Read-only tools only, whatever the type allows." }
       }, ["subagent_type", "prompt"])
     },
@@ -87,7 +87,7 @@ export async fn execOrchestrationTool(runtime: AgentRuntime, call: ToolCall, opt
   if (call.name === "task") {
     let r = await runtime.spawn({
       profileId: str("subagent_type"), prompt: str("prompt"), description: str("description") !== "" ? str("description") : null,
-      background: args.run_in_background === true, readOnly: o.readOnly === true || args.readonly === true, signal: signal, parentCallId: call.id
+      background: typeof args.run_in_background === "boolean" ? args.run_in_background : null, readOnly: o.readOnly === true || args.readonly === true, signal: signal, parentCallId: call.id
     })
     if (r.kind === "refused") { return result(call, "refused", { error: r.reason }, false) }
     if (r.kind === "started") {

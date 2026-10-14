@@ -44,7 +44,7 @@ export type JsAgentHost = Omit<AgentHost, 'childModel' | 'childTools' | 'execChi
   childModel?: ((ctx: JsChildRunContext) => CallModel | null | undefined) | null
   childTools: (ctx: JsChildRunContext) => ReturnType<AgentHost['childTools']>
   execChildTool: (call: ToolCall, ctx: JsChildRunContext) => Promise<ToolRun>
-  childSystemPrompt: (ctx: JsChildRunContext) => string
+  childSystemPrompt: (ctx: JsChildRunContext) => string | Promise<string>
   /** Each child's stop signal; default an `AbortController`'s. */
   createSignal?: (() => { signal: AbortSignal; stop: () => void }) | null
 }
