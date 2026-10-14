@@ -2,7 +2,7 @@
 // and a run that was cut off is continued from its last checkpoint (`resumeRun`). The foundation for server-side
 // runs too — any process holding the store can continue one.
 
-import { runAgentLoop, LoopOptions, LoopOutcome, LoopCheckpoint } from "./loop.tish"
+import { initialNudges, runAgentLoop, LoopOptions, LoopOutcome, LoopCheckpoint } from "./loop.tish"
 import { AgentRunRecord, RunStore } from "./store.tish"
 import { TodoList } from "./todos.tish"
 
@@ -32,7 +32,10 @@ export async fn runPersistent(opts: PersistentRunOptions): LoopOutcome {
     let meta = opts.meta ?? (existing !== null ? existing.meta ?? null : null)
     return { id: opts.id, createdAt: createdAt, updatedAt: now(), meta: meta, todos: todos, status: status, checkpoint: checkpoint }
   }
-  let first = existing !== null ? existing.checkpoint : { messages: opts.messages, round: 0, acted: false, nudgesLeft: 0, done: false }
+  let first = existing !== null ? existing.checkpoint : {
+    messages: opts.messages, round: 0, acted: false, nudgesLeft: initialNudges(opts.requireAction ?? null), done: false,
+    toolResults: {}, readRounds: 0, mustCallTool: false
+  }
   await opts.runs.save(record("running", first))
   let mark = async fn(status: string, error: string?): void {
     let saved = await opts.runs.get(opts.id)
@@ -98,7 +101,10 @@ export async fn resumeRun(id: string, runs: RunStore, options: ResumeOptions): L
     id: id,
     runs: runs,
     messages: cp.messages.concat([{ role: "user", content: "The session was interrupted and has resumed. Check the state of your work, then carry on where you left off." }]),
-    resumeState: { round: cp.round, acted: cp.acted, nudgesLeft: cp.nudgesLeft },
+    resumeState: {
+      round: cp.round, acted: cp.acted, nudgesLeft: cp.nudgesLeft,
+      toolResults: cp.toolResults ?? null, readRounds: cp.readRounds ?? 0, mustCallTool: cp.mustCallTool === true
+    },
     meta: options.meta ?? saved.meta ?? null
   })
 }

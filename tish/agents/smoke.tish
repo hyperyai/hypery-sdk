@@ -4,7 +4,8 @@
 import { delay } from "tish:timers"
 import { utf8Encode } from "tish:encoding"
 import {
-  createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL
+  createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL,
+  memoryStore, runStore, runPersistent, resumeRun, runAgentLoop
 } from "./index.tish"
 
 fn turn(text: string, calls: any[]): any {
@@ -102,3 +103,56 @@ let byProfile = JSON.parse((await task({ subagent_type: "watcher", prompt: "look
 let overridden = JSON.parse((await task({ subagent_type: "watcher", prompt: "look around", run_in_background: false })).content)
 let plain = JSON.parse((await task({ subagent_type: "explorer", prompt: "look around" })).content)
 console.log("profile background: " + String(byProfile.status) + " " + String(overridden.ok) + " " + String(plain.ok))
+
+// Saves after each tool call: a run cut off after its first edit resumes without running that edit again.
+let spec = fn(name: string): any { return { type: "function", "function": { name: name, description: name, parameters: {} } } }
+let runs = runStore(memoryStore(), "smoke")
+let ran = []
+let crash = true
+let editModel = async fn(messages: any[], tools: any[], hooks: any, signal: any): any {
+  let last = messages[messages.length - 1]
+  if (last.role === "user" && last.content === "fix both") {
+    return { text: "", toolCalls: [{ id: "e1", name: "edit", arguments: "{}" }, { id: "e2", name: "edit", arguments: "{}" }] }
+  }
+  return { text: "fixed", toolCalls: [] }
+}
+let runOpts = {
+  tools: [{ readOnly: false, spec: spec("edit") }],
+  callModel: editModel,
+  requireAction: { nudges: 3 },
+  execTool: async fn(c) {
+    ran.push(c.id)
+    return { id: c.id, name: c.name, argsText: c.argsText, ok: true, summary: "ok", content: "edited " + c.id }
+  },
+  checkpoint: fn(state) { if (crash && Object.keys(state.toolResults).length > 0) { throw { message: "crashed" } } }
+}
+let firstSave = null
+let watched = { ...runs, save: async fn(r) { if (firstSave === null) { firstSave = r.checkpoint }; return await runs.save(r) } }
+try {
+  await runPersistent({ ...runOpts, id: "r1", runs: watched, messages: [{ role: "user", content: "fix both" }] })
+} catch (err) {}
+let cut = await runs.get("r1")
+console.log("first save nudges: " + String(firstSave.nudgesLeft))
+console.log("tool save: " + String(Object.keys(cut.checkpoint.toolResults).join(",")) + " acted=" + String(cut.checkpoint.acted))
+crash = false
+let back = await resumeRun("r1", runs, runOpts)
+let e1 = back.messages.find(fn(m) { return m.role === "tool" && m.tool_call_id === "e1" })
+console.log("resumed: ran=" + ran.join(",") + " e1=" + e1.content + " " + back.text)
+
+// The reading limit: after two rounds of only reading, the model is told to act and must call a tool.
+let choices = []
+let reads = await runAgentLoop({
+  messages: [{ role: "user", content: "change it" }],
+  tools: [{ readOnly: true, spec: spec("read") }, { readOnly: false, spec: spec("edit") }],
+  requireAction: { maxReadRounds: 2, nudges: 0 },
+  maxRounds: 6,
+  callModel: async fn(messages: any[], tools: any[], hooks: any, signal: any, req: any = null): any {
+    choices.push(req !== null && typeof req === "object" ? String(req.toolChoice) : "auto")
+    let last = messages[messages.length - 1]
+    if (last.role === "user" && last.content.includes("read enough")) { return turn("", [["edit", {}]]) }
+    if (messages.some(fn(m) { return m.role === "tool" && m.name === "edit" })) { return turn("changed", []) }
+    return turn("", [["read", {}]])
+  },
+  execTool: async fn(c) { return { id: c.id, name: c.name, argsText: c.argsText, ok: true, summary: "ok", content: "{}" } }
+})
+console.log("read limit: " + choices.join(",") + " acted=" + String(reads.acted))
