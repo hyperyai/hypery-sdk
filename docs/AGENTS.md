@@ -13,6 +13,21 @@ is built in.
 
 Runnable examples: [`examples/agents`](../examples/agents) (they run offline, or against Hypery with `HYPERY_TOKEN`).
 
+**Written once, in Tish.** The core is [`tish/agents`](../tish/agents), written in [Tish](https://tishlang.com) and
+compiled to the package's JavaScript with its TypeScript declarations (`npm run build:core`). Dune's cloud agents run
+the same source natively: `import { … } from "@hyperyai/sdk/agents"` from a `.tish` file resolves to it through the
+package's `tish` export condition. `npm run test:tish` runs [`smoke.tish`](../tish/agents/smoke.tish) on Tish's VM and as
+the shipped JavaScript and checks they agree. Because it is Tish:
+
+- There are no classes. The runtime and the plan are values made by factories — `createAgentRuntime(host)`,
+  `createTodoList(initial, onChange)` — and errors are plain values (`{ name: "AgentModelError", message, code, status }`;
+  `isAgentModelError(err)` checks one).
+- Absent values are `null`, never `undefined`: `runtime.get(id)` and `wait` return `null` for an unknown id.
+- Stopping is a flag work checks, not an event: a `signal` is anything with `aborted` (a JS `AbortSignal` works). Each
+  child's `ctx.signal` comes from the host's `createSignal()` — in this package an `AbortController`'s signal by
+  default, so tools can pass it to `fetch` or listen for `abort`, and stopping a child cancels its requests in flight.
+  Natively (Dune) it is a plain `{ aborted }` flag the model call and tools check while they work.
+
 ---
 
 ## The pieces
@@ -58,11 +73,11 @@ const callModel = createHyperyModel({
 })
 ```
 
-Errors are `AgentModelError` with a message safe to show and a `code`: `ai_reauth`, `ai_credits`, `ai_scope`,
+Errors are `AgentModelError` values (`isAgentModelError(err)`) with a message safe to show and a `code`: `ai_reauth`, `ai_credits`, `ai_scope`,
 `ai_rate_limited`, `ai_timeout`, `too_large`, `network`, `ai_upstream`. A stream silent for 180 s is ended
 (`idleTimeoutMs`).
 
-### 3. Agents the main agent can talk to — `AgentRuntime`
+### 3. Agents the main agent can talk to — `createAgentRuntime`
 
 Every agent is a **session**: an id, its transcript, an inbox. The main agent (or your UI) can:
 
@@ -82,7 +97,7 @@ Agents can't start agents of their own (depth 1). Each session keeps `parentCall
 that started it, so a UI can nest the agent's progress under that call.
 
 ```ts
-const runtime = new AgentRuntime({
+const runtime = createAgentRuntime({
   callModel,
   profiles: () => mergeProfiles(BUILTIN_PROFILES, myProfiles),
   childTools: ctx => myTools({ readOnly: ctx.readOnly }),            // LoopTool[]
@@ -107,7 +122,7 @@ Add them to the main agent's tools and route their calls to `execOrchestrationTo
 | `stop_agent` | Stop one agent. |
 | `list_agents` | All agents, status, answers. |
 | `await_agent` | Waits for one agent to finish and returns its answer (`timeout_seconds`, default 120). The answer is not delivered again as a notification. |
-| `manage_todos` (`todoTool`) | The plan the user sees (`TodoList`). |
+| `manage_todos` (`todoTool`) | The plan the user sees (`createTodoList`). |
 | `build_and_review` (`superviseTool`) | Build → review → fix until it passes. |
 
 ### 5. Agent types — profiles
@@ -140,7 +155,7 @@ The same checkpoints are what a server-side run needs: any process holding the s
 
 ```ts
 import {
-  AgentRuntime, BUILTIN_PROFILES, ORCHESTRATOR_GUIDANCE, TodoList, TODO_TOOL, createHyperyModel, execOrchestrationTool,
+  createAgentRuntime, createTodoList, BUILTIN_PROFILES, ORCHESTRATOR_GUIDANCE, TODO_TOOL, createHyperyModel, execOrchestrationTool,
   execSuperviseTool, indexedDbStore, isOrchestrationTool, mergeProfiles, orchestrationTools, runPersistent, runStore,
   sessionStore, SUPERVISE_TOOL, superviseTool, todoTool,
 } from '@hyperyai/sdk/agents'
@@ -148,9 +163,9 @@ import {
 const kv = indexedDbStore('my-app-agents')
 const profiles = mergeProfiles(BUILTIN_PROFILES, myProfiles)
 const callModel = createHyperyModel({ token, model, team })
-const runtime = new AgentRuntime({ callModel, profiles: () => profiles, childTools, execChildTool, childSystemPrompt, store: sessionStore(kv, threadId) })
+const runtime = createAgentRuntime({ callModel, profiles: () => profiles, childTools, execChildTool, childSystemPrompt, store: sessionStore(kv, threadId) })
 await runtime.load()
-const todos = new TodoList([], showPlan)
+const todos = createTodoList([], showPlan)
 
 await runPersistent({
   id: turnId,
@@ -180,8 +195,10 @@ layout, copywriter, inspector) merge over the built-ins.
 
 ### Dune
 
-Import the package from `.tish` like any npm module. Dune's `agentChildTasks` / `agentJobsHost` map onto
-`AgentRuntime` (spawn, `resume` → `message`, `await_job` → `await_agent`), its profiles onto `AgentProfile`, and
+Import the package from `.tish` (`import { createAgentRuntime } from "@hyperyai/sdk/agents"`): the `tish` export condition
+gives Dune the Tish source, which it runs natively in its cloud agents and compiles for its webview. Its own host
+supplies `fetch` (Tish's `http` fetch natively) to `createHyperyModel`. Dune's `agentChildTasks` / `agentJobsHost` map onto
+the runtime (spawn, `resume` → `message`, `await_job` → `await_agent`), its profiles onto `AgentProfile`, and
 sessions persist with `fileStore` under `.dune/agents` — which gives Dune messaging and stopping single agents, and
 agents that survive a reload.
 
@@ -201,6 +218,7 @@ Functions: `runAgentLoop`, `repairTranscript`, `batchCalls`, `createHyperyModel`
 `pruneOldImages`, `fitImagesToBudget`, `compactTranscript`, `modelSummarizer`, `orchestrationTools`,
 `execOrchestrationTool`, `isOrchestrationTool`, `runSupervised`, `execSuperviseTool`, `verdictOf`, `mergeProfiles`,
 `runPersistent`, `resumeRun`, `interruptedRuns`, `memoryStore`, `indexedDbStore`, `fileStore`, `sessionStore`,
-`runStore`, `useAgents`, `useAgent`.
+`runStore`, `useAgents`, `useAgent`, `isAgentModelError`, `streamErrorMessage`.
 
-Classes: `AgentRuntime`, `TodoList`, `AgentModelError`.
+Factories: `createAgentRuntime`, `createTodoList`, `createHyperyModel`, `createStreamAccumulator`, `agentModelError`
+(and `isAgentModelError`). No classes.

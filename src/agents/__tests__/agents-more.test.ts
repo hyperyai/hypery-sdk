@@ -1,18 +1,9 @@
 import { describe, expect, it } from 'bun:test'
+import { BUILTIN_PROFILES, compactTranscript, createAgentRuntime, createHyperyModel, createTodoList, interruptedRuns, isAgentModelError, memoryStore, pruneOldImages, repairTranscript, resumeRun, runAgentLoop, runPersistent, runStore, runSupervised, sessionStore, verdictOf, type AgentEvent, type AgentHost, type AgentRuntime, type ChatMessage, type LoopTool, type ModelTurn } from '../index.js'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createHyperyModel, AgentModelError } from '../hypery-model.js'
-import { compactTranscript, pruneOldImages } from '../context.js'
-import { repairTranscript, runAgentLoop, type LoopTool } from '../loop.js'
-import { memoryStore, runStore, sessionStore } from '../store.js'
 import { fileStore } from '../node/index.js'
-import { runPersistent, resumeRun, interruptedRuns } from '../run.js'
-import { TodoList } from '../todos.js'
-import { runSupervised, verdictOf } from '../supervisor.js'
-import { AgentRuntime, type AgentEvent, type AgentHost } from '../runtime.js'
-import { BUILTIN_PROFILES } from '../profiles.js'
-import type { ChatMessage, ModelTurn } from '../types.js'
 
 const tool = (name: string, readOnly: boolean): LoopTool => ({ readOnly, spec: { type: 'function', function: { name, description: name, parameters: { type: 'object', properties: {} } } } })
 const turn = (text: string, calls: [string, object?][] = []): ModelTurn => ({ text, toolCalls: calls.map(([name, args], i) => ({ id: `${name}-${i}-${Math.random()}`, name, arguments: JSON.stringify(args ?? {}) })) })
@@ -47,7 +38,7 @@ describe('createHyperyModel', () => {
     const big = createHyperyModel({ token: 't', model: 'm', maxRequestBytes: 10, fetch: (async () => sse([])) as unknown as typeof fetch })
     await expect(big([{ role: 'user', content: 'a long message' }], [], {})).rejects.toMatchObject({ code: 'too_large' })
     const noToken = createHyperyModel({ token: null, model: 'm' })
-    await expect(noToken([], [], {})).rejects.toBeInstanceOf(AgentModelError)
+    await expect(noToken([], [], {})).rejects.toMatchObject({ name: "AgentModelError", code: "ai_reauth", status: 401 })
   })
 })
 
@@ -109,7 +100,7 @@ describe('stores', () => {
 describe('todos', () => {
   it('replaces and updates the plan', () => {
     const seen: number[] = []
-    const list = new TodoList([], t => seen.push(t.length))
+    const list = createTodoList([], t => seen.push(t.length))
     list.run({ id: '1', name: 'manage_todos', argsText: JSON.stringify({ replace: [{ text: 'Plan' }, { text: 'Build' }] }) })
     const r = list.run({ id: '2', name: 'manage_todos', argsText: JSON.stringify({ update: [{ id: '1', status: 'done' }] }) })
     expect(r.summary).toBe('1/2 done')
@@ -132,7 +123,7 @@ function host(script: (system: string, prompt: string, msgs: ChatMessage[]) => M
 describe('supervisor', () => {
   it('builds, fails review, fixes with the builder\'s context, passes', async () => {
     let reviews = 0
-    const rt = new AgentRuntime(host((system, _prompt, msgs) => {
+    const rt = createAgentRuntime(host((system, _prompt, msgs) => {
       if (system === 'reviewer') return turn(++reviews === 1 ? 'FAIL\n1. Make it blue' : 'PASS')
       const last = msgs[msgs.length - 1]
       if (last.role === 'tool') return turn(String(msgs.some(m => String(m.content).includes('Make it blue')) ? 'Made it blue.' : 'Built it red.'))
@@ -152,7 +143,7 @@ describe('runtime', () => {
     let open = 0
     let peak = 0
     const gates: (() => void)[] = []
-    const rt = new AgentRuntime(host(() => turn('done'), {
+    const rt = createAgentRuntime(host(() => turn('done'), {
       maxConcurrent: 2,
       onEvent: e => events.push(e),
       callModel: async () => {

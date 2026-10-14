@@ -1,0 +1,86 @@
+// A run of the agent core on a scripted model, for every target: `tish run` (the VM), a native build (what Dune's
+// cloud agents run), and the JS build through Node. Each line it prints is checked by `npm run test:tish`.
+
+import { delay } from "tish:timers"
+import { utf8Encode } from "tish:encoding"
+import {
+  createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL
+} from "./index.tish"
+
+fn turn(text: string, calls: any[]): any {
+  return { text: text, toolCalls: calls.map(fn(c) { return { id: c[0] + "-" + String(Math.random()), name: c[0], arguments: JSON.stringify(c[1]) } }) }
+}
+
+fn lastUser(messages: any[]): string {
+  let i = messages.length - 1
+  while (i >= 0) {
+    if (messages[i].role === "user" && typeof messages[i].content === "string") { return messages[i].content }
+    i = i - 1
+  }
+  return ""
+}
+
+// A scripted model: what each agent says depends on its task.
+async fn model(messages: any[], tools: any[], hooks: any, signal: any): any {
+  let task = lastUser(messages)
+  let sawTool = messages.some(fn(m) { return m.role === "tool" })
+  if (task.includes("slow")) {
+    // Runs until it is stopped (the runtime's stop flag) — a long job.
+    while (signal === null || signal.aborted !== true) { await delay(5) }
+    throw { name: "AbortError", message: "stopped" }
+  }
+  if (task.includes("report") && !sawTool) { return turn("", [[REPORT_TOOL, { message: "halfway there" }]]) }
+  if (task.includes("Check this work")) { return turn("PASS: the title is right", []) }
+  if (task.includes("Message from the main agent")) { return turn("updated: " + task.split("\n")[1], []) }
+  if (!sawTool && task.includes("edit")) { return turn("", [["edit", { field: "title" }]]) }
+  return turn("done: " + task.slice(0, 20), [])
+}
+
+let edits = []
+let rt = createAgentRuntime({
+  callModel: model,
+  profiles: fn() { return BUILTIN_PROFILES },
+  childTools: fn(ctx) {
+    let tools = [{ readOnly: true, spec: { type: "function", "function": { name: "read", description: "read", parameters: {} } } }]
+    if (!ctx.readOnly) { tools.push({ readOnly: false, spec: { type: "function", "function": { name: "edit", description: "edit", parameters: {} } } }) }
+    return tools
+  },
+  execChildTool: async fn(call, ctx) {
+    edits.push(call.name)
+    return { id: call.id, name: call.name, argsText: call.argsText, ok: true, summary: "ok", content: "{}" }
+  },
+  childSystemPrompt: fn(ctx) { return ctx.profile.instructions }
+})
+
+// A foreground child: its answer comes straight back.
+let fg = await rt.spawn({ profileId: "builder", prompt: "edit the title" })
+console.log("foreground: " + fg.kind + " " + String(fg.ok) + " " + fg.summary + " edits=" + edits.join(","))
+
+// A background child reports to the parent, then finishes; the parent hears both between its rounds.
+let bg = await rt.spawn({ profileId: "explorer", prompt: "report on the page", background: true })
+let waited = await rt.wait(bg.id, { timeoutMs: 5000 })
+let notes = rt.drainParentNotifications()
+console.log("background: " + bg.kind + " -> " + waited.status + " notes=" + String(notes.length) + " " + String(notes[0].includes("halfway there")) + " " + String(notes[1].includes("finished")))
+
+// A finished child resumed with a message keeps its transcript.
+let resumed = await rt.message(fg.id, "now the subtitle", { wait: true })
+console.log("resume: " + resumed.kind + " " + resumed.summary + " transcript=" + String(rt.get(fg.id).transcript.length > 4))
+
+// A long child is stopped by id; await_agent gives up after its timeout on another.
+let slow = await rt.spawn({ profileId: "explorer", prompt: "slow survey", background: true })
+let other = await rt.spawn({ profileId: "explorer", prompt: "slow audit", background: true })
+let timedOut = await execOrchestrationTool(rt, { id: "w1", name: "await_agent", argsText: JSON.stringify({ agent_id: other.id, timeout_seconds: 1 }) })
+console.log("await timeout: " + JSON.parse(timedOut.content).status)
+console.log("stop: " + String(rt.stop(slow.id)) + " " + rt.get(slow.id).status)
+rt.stopAll()
+await rt.wait(other.id, { timeoutMs: 2000 })
+console.log("stopAll: " + rt.get(other.id).status)
+
+// The supervisor: build, review, pass.
+let sup = await runSupervised(rt, { request: "edit the headline", criteria: "it says hello" })
+console.log("supervised: " + String(sup.passed) + " reviews=" + String(sup.reviews) + " verdict=" + verdictOf("PASS — looks good") + "/" + verdictOf("FAIL: no"))
+
+// The SSE parser, fed a stream split inside a multi-byte character by the model call's byte handling.
+let acc = createStreamAccumulator()
+acc.push("data: " + JSON.stringify({ choices: [{ delta: { content: "café ✓" } }] }) + "\n\ndata: [DONE]\n\n")
+console.log("stream: " + acc.result().text + " done=" + String(acc.result().sawDone) + " bytes=" + String(utf8Encode("café ✓").length))

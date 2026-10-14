@@ -1,0 +1,514 @@
+// The agent runtime: a parent agent's children as addressable sessions (Claude Code's agents, Cursor's background
+// agents, dune's task jobs — with what dune left out).
+//
+// - Every child is a session with an id, its transcript and an inbox, foreground or background.
+// - The parent can message a running child (it reads the message at its next round), resume a finished one with its
+//   whole context, stop one, and list them.
+// - A child can report to the parent mid-run (progress, a question); reports and finished background children are
+//   queued and reach the parent between its rounds (`drainParentNotifications`).
+// - Sessions go through the host's `store`, so a host that persists them gets them back after a reload.
+//
+// Host-agnostic: the host supplies the model call, its profiles, the tools a child may use and how to run them, and
+// the child's system prompt. Children cannot spawn children (depth 1, as in dune and Claude Code).
+//
+// In Tish's model: a background child runs with `Promise.spawn` (its own thread natively), a stop is a flag its loop
+// checks, waiting is checking the session between short `delay`s, and the runtime is a value made by
+// `createAgentRuntime` — no classes, nothing resolved from somewhere else.
+
+import { delay } from "tish:timers"
+import { runAgentLoop, LoopTool } from "./loop.tish"
+import { AgentProfile, CallModel, ChatMessage, StopSignal, ToolCall, ToolRun } from "./types.tish"
+
+export type SessionStatus = "queued" | "running" | "done" | "error" | "stopped"
+
+// What the host's UI can follow: one stream for every agent. `type` says which fields are set.
+export type AgentEvent = {
+  type: "session" | "tool-start" | "tool-end" | "text" | "report" | "nudge",
+  sessionId: string,
+  status: SessionStatus?,
+  profile: string?,
+  description: string?,
+  name: string?,
+  ok: boolean?,
+  summary: string?,
+  delta: string?,
+  message: string?,
+  question: boolean?
+}
+
+export type AgentSession = {
+  id: string,
+  profile: string,
+  description: string,
+  status: SessionStatus,
+  background: boolean,
+  // The child's last answer.
+  summary: string?,
+  transcript: ChatMessage[],
+  // Parent messages waiting for the child's next round.
+  inbox: string[],
+  startedAt: number,
+  endedAt: number?,
+  rounds: number,
+  // Limited to read-only tools: its work changes nothing.
+  readOnly: boolean?,
+  // The parent's tool call that started it (`task`), so a UI can nest its progress under that call.
+  parentCallId: string?
+}
+
+// Where sessions are kept between reloads (the host's choice: IndexedDB, a file, a database). Optional.
+export type SessionStore = {
+  load: () => Promise<AgentSession[]>,
+  save: (AgentSession) => Promise<void>,
+  remove: ((string) => Promise<void>)?
+}
+
+export type ChildRunContext = {
+  session: AgentSession,
+  profile: AgentProfile,
+  readOnly: boolean,
+  // Stops this child: its own flag, set by `stop` / `stopAll`.
+  signal: StopSignal
+}
+
+export type AgentHost = {
+  callModel: CallModel,
+  // The model call for one child, from its profile's `model` ("inherit", "fast" or an id): a host that runs
+  // read-only surveys on a cheaper model returns that here. Absent, or null returned, = `callModel`.
+  childModel: ((ChildRunContext) => CallModel?)?,
+  profiles: () => AgentProfile[],
+  // The tools a child of `profile` may call (the runtime adds `report_to_parent`).
+  childTools: (ChildRunContext) => LoopTool[],
+  // Run one of the child's tools.
+  execChildTool: (ToolCall, ChildRunContext) => Promise<ToolRun>,
+  // The child's system prompt (the profile's instructions plus the host's context).
+  childSystemPrompt: (ChildRunContext) => string,
+  store: SessionStore?,
+  // Every agent's progress, for the host's UI.
+  onEvent: ((AgentEvent) => void)?,
+  // Background agents running at once; more wait as "queued". Default 4.
+  maxConcurrent: number?,
+  // Sessions changed (spawned, finished, messaged, stopped).
+  onChange: (() => void)?,
+  // Default child round budget.
+  maxRounds: number?,
+  now: (() => number)?,
+  newId: (() => string)?,
+  // Makes each child's stop signal: `signal` goes to its tools and model call (`ctx.signal`), `stop()` raises it.
+  // Absent: a plain `{ aborted }` flag. A JS host gives an AbortSignal here, so a stop also cancels requests in
+  // flight (the package's `createAgentRuntime` does this by default).
+  createSignal: (() => StopControl)?
+}
+
+export type StopControl = { signal: StopSignal, stop: () => void }
+
+export type SpawnRequest = {
+  profileId: string,
+  prompt: string,
+  description: string?,
+  background: boolean?,
+  readOnly: boolean?,
+  // Stops the child too when it aborts (the parent's Stop).
+  signal: StopSignal?,
+  // The parent's tool call starting it, kept on the session (see `AgentSession.parentCallId`).
+  parentCallId: string?
+}
+
+// `kind` says which: "done" (id, ok, summary, rounds), "started" (id), "refused" (reason).
+export type SpawnResult = {
+  kind: "done" | "started" | "refused",
+  id: string?,
+  ok: boolean?,
+  summary: string?,
+  rounds: number?,
+  reason: string?
+}
+
+// `kind` says which: "queued", "resumed", "done" (ok, summary) or "unknown".
+export type MessageResult = {
+  kind: "queued" | "resumed" | "done" | "unknown",
+  id: string,
+  ok: boolean?,
+  summary: string?
+}
+
+export type WaitOptions = { timeoutMs: number?, signal: StopSignal? }
+export type MessageOptions = { wait: boolean?, signal: StopSignal? }
+
+export type AgentRuntime = {
+  // Bring back the store's sessions (any left "running" by a reload are marked stopped: their run is gone).
+  load: () => Promise<void>,
+  // Wait until every session change has reached the store (before a process exits or a page unloads).
+  flush: () => Promise<void>,
+  // Called whenever sessions change. Returns the unsubscribe.
+  subscribe: (() => void) => (() => void),
+  list: () => AgentSession[],
+  get: (string) => AgentSession?,
+  // The session once it is no longer queued or running, or as it is when `timeoutMs` passes or `signal` aborts.
+  // Null for an unknown id.
+  wait: (string, WaitOptions?) => Promise<AgentSession?>,
+  // Drop the queued "finished" notice for an id: the parent already has its answer.
+  dismissFinished: (string) => void,
+  // Everything queued for the parent (reports, finished background children), taken.
+  drainParentNotifications: () => string[],
+  hasPendingNotifications: () => boolean,
+  spawn: (SpawnRequest) => Promise<SpawnResult>,
+  // Message a child. Running: queued for its next round. Finished: resumed with its whole context and this message —
+  // in the background (its answer reaches the parent as a notification) unless `wait` is set.
+  message: (string, string, MessageOptions?) => Promise<MessageResult>,
+  // Stop one child. Whether it was queued or running.
+  stop: (string) => boolean,
+  // Stop every running child (the user pressed Stop); their queued notifications are dropped.
+  stopAll: () => void,
+  // A child's report to the parent (also what `report_to_parent` does). A question asks for an answer.
+  report: (string, string, boolean?) => void
+}
+
+export const REPORT_TOOL = "report_to_parent"
+
+const REPORT_SPEC = {
+  readOnly: true,
+  acts: false,
+  spec: {
+    type: "function",
+    "function": {
+      name: REPORT_TOOL,
+      description: "Send the main agent a progress update, or a question (set question) when you need a decision you cannot make yourself. It arrives between its steps and it answers with a message you read at your next step — keep working on what you can meanwhile. Your final answer still goes back by itself when you finish.",
+      parameters: { type: "object", properties: { message: { type: "string", description: "What to tell the main agent." }, question: { type: "boolean", description: "This needs an answer." } }, required: ["message"] }
+    }
+  }
+}
+
+// How often a waiting call looks at a session again.
+const WAIT_STEP_MS = 25
+
+fn isBusy(s: AgentSession?): boolean {
+  return s !== null && (s.status === "running" || s.status === "queued")
+}
+
+fn plainStopControl(): StopControl {
+  let flag = { aborted: false }
+  return { signal: flag, stop: fn() { flag.aborted = true } }
+}
+
+fn allSessions(sessions: any): AgentSession[] {
+  let out = []
+  for (let s of sessions.values()) { out.push(s) }
+  return out
+}
+
+fn errorMessage(err: any): string {
+  if (err !== null && typeof err === "object" && typeof err.message === "string") { return err.message }
+  return String(err)
+}
+
+export fn createAgentRuntime(host: AgentHost): AgentRuntime {
+  let sessions = new Map()
+  // Each session's stop flag, while it runs.
+  let controls = new Map()
+  let parentQueue = []
+  let loaded = false
+  let loading = null
+  // Background runs going now; queued sessions wait in `waiting` with what to run once a slot frees.
+  let active = 0
+  let waiting = []
+  let listeners = []
+  let pendingSaves = 0
+  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : 4
+
+  let now = fn(): number { return typeof host.now === "function" ? host.now() : Date.now() }
+  let changed = fn(): void {
+    if (typeof host.onChange === "function") { host.onChange() }
+    for (let l of listeners.slice()) { l() }
+  }
+  let emit = fn(e: AgentEvent): void {
+    if (typeof host.onEvent === "function") { host.onEvent(e) }
+  }
+  let sessionEvent = fn(s: AgentSession): void {
+    emit({ type: "session", sessionId: s.id, status: s.status, profile: s.profile, description: s.description })
+  }
+  let persist = fn(s: AgentSession): void {
+    changed()
+    if (host.store === null || typeof host.store !== "object") { return }
+    pendingSaves = pendingSaves + 1
+    let save = async fn(): void {
+      try {
+        await host.store.save(s)
+      } catch (e) {
+        // A failed save leaves the session in memory; the next change saves it again.
+      }
+      pendingSaves = pendingSaves - 1
+    }
+    save()
+  }
+  let profileById = fn(id: string): AgentProfile? {
+    let found = host.profiles().filter(fn(p) { return p.id === id })
+    return found.length > 0 ? found[0] : null
+  }
+
+  let report = fn(fromId: string, text: string, question: boolean?): void {
+    let s = sessions.get(fromId) ?? null
+    let who = "agent " + fromId + (s !== null ? " (" + s.profile + ")" : "")
+    let asks = question === true
+    parentQueue.push(asks
+      ? "QUESTION from " + who + " — it needs your answer (send_message " + fromId + "):\n" + text
+      : "Report from " + who + ":\n" + text)
+    emit({ type: "report", sessionId: fromId, message: text, question: asks })
+    changed()
+  }
+
+  // One run of a child's loop: fresh (a new task) or continuing its transcript with a parent message.
+  let run = async fn(session: AgentSession, profile: AgentProfile, prompt: string, forceReadOnly: boolean, parentSignal: StopSignal?, fresh: boolean): any {
+    let control = typeof host.createSignal === "function" ? host.createSignal() : plainStopControl()
+    controls.set(session.id, control)
+    let ctx = { session: session, profile: profile, readOnly: forceReadOnly || profile.readOnly === true, signal: control.signal }
+    let tools = host.childTools(ctx).concat([REPORT_SPEC])
+    let messages = fresh
+      ? [{ role: "system", content: host.childSystemPrompt(ctx) }, { role: "user", content: prompt }]
+      : session.transcript.concat([{ role: "user", content: "Message from the main agent:\n" + prompt }])
+    let childModel = typeof host.childModel === "function" ? host.childModel(ctx) : null
+    let budget = typeof profile.maxRounds === "number" && profile.maxRounds > 0 ? profile.maxRounds : (typeof host.maxRounds === "number" && host.maxRounds > 0 ? host.maxRounds : 30)
+    let ok = true
+    let summary = ""
+    let rounds = 0
+    try {
+      let outcome = await runAgentLoop({
+        messages: messages,
+        tools: tools,
+        callModel: typeof childModel === "function" ? childModel : host.callModel,
+        signal: control.signal,
+        stopped: fn(): boolean { return parentSignal !== null && parentSignal.aborted === true },
+        maxRounds: budget,
+        drainNotifications: fn(): string[] {
+          return session.inbox.splice(0, session.inbox.length).map(fn(t) { return "Message from the main agent:\n" + t })
+        },
+        execTool: async fn(call: ToolCall): ToolRun {
+          if (call.name === REPORT_TOOL) {
+            let args = {}
+            try { args = JSON.parse(call.argsText === "" ? "{}" : call.argsText) } catch (e) { args = {} }
+            report(session.id, String(args.message ?? ""), args.question === true)
+            return { id: call.id, name: call.name, argsText: call.argsText, ok: true, summary: "reported", content: JSON.stringify({ ok: true }) }
+          }
+          return await host.execChildTool(call, ctx)
+        },
+        // A building agent asked to change something keeps going until it has (read-only types just answer).
+        requireAction: fresh && !ctx.readOnly,
+        hooks: {
+          onToolStart: fn(c) { emit({ type: "tool-start", sessionId: session.id, name: c.name }) },
+          onToolEnd: fn(r) { emit({ type: "tool-end", sessionId: session.id, name: r.name, ok: r.ok, summary: r.summary }) },
+          onTextDelta: fn(d) { emit({ type: "text", sessionId: session.id, delta: d }) },
+          onNudge: fn(m) { emit({ type: "nudge", sessionId: session.id, message: m }) }
+        }
+      })
+      session.transcript = outcome.messages
+      rounds = outcome.rounds
+      let said = outcome.text.trim()
+      summary = said !== "" ? said : (outcome.stopped ? "(stopped)" : "(finished without a summary)")
+      ok = !outcome.stopped
+    } catch (err) {
+      ok = false
+      summary = "(agent error: " + errorMessage(err) + ")"
+    }
+    controls.delete(session.id)
+    session.rounds = session.rounds + rounds
+    if (session.status === "running") {
+      session.status = ok ? "done" : "error"
+      session.summary = summary
+      session.endedAt = now()
+    } else {
+      session.summary = summary
+    }
+    // A background child's answer is queued for the parent; a foreground one went straight back.
+    if (session.background && session.status !== "stopped") {
+      parentQueue.push("Agent " + session.id + " (" + session.profile + ") " + (ok ? "finished" : "failed") + ":\n" + summary)
+    }
+    sessionEvent(session)
+    persist(session)
+    return { ok: ok, summary: summary, rounds: rounds }
+  }
+
+  // The next queued session that was not stopped while it waited, now running; null when none is left.
+  let takeNext = fn(): any {
+    while (waiting.length > 0) {
+      let next = waiting.shift()
+      if (next.session.status === "queued") {
+        next.session.status = "running"
+        sessionEvent(next.session)
+        changed()
+        return next
+      }
+    }
+    return null
+  }
+  // A background slot: one worker (its own thread natively) that runs its job, then the queued ones, until
+  // none is left. Re-checks the queue after giving the slot up, so a job queued at that moment is not stranded.
+  let runSlot = fn(first: any): void {
+    Promise.spawn(async fn() {
+      let job = first
+      while (job !== null) {
+        try {
+          if (job.session.status !== "stopped") { await job.go() }
+        } catch (e) {
+          // `run` records its own failures on the session.
+        }
+        job = takeNext()
+        if (job === null) {
+          active = Math.max(0, active - 1)
+          if (waiting.length > 0 && active < maxConcurrent) {
+            active = active + 1
+            job = takeNext()
+            if (job === null) { active = Math.max(0, active - 1) }
+          }
+        }
+      }
+    })
+  }
+  // A background run: started now when a slot is free, otherwise queued until a worker takes it.
+  let startBackground = fn(session: AgentSession, go: () => Promise<any>): void {
+    if (active < maxConcurrent) {
+      active = active + 1
+      runSlot({ session: session, go: go })
+      return
+    }
+    session.status = "queued"
+    sessionEvent(session)
+    changed()
+    waiting.push({ session: session, go: go })
+  }
+
+  let stop = fn(id: string): boolean {
+    let s = sessions.get(id) ?? null
+    if (s === null || (s.status !== "running" && s.status !== "queued")) { return false }
+    let control = controls.get(id) ?? null
+    if (control !== null) { control.stop() }
+    s.status = "stopped"
+    s.endedAt = now()
+    persist(s)
+    return true
+  }
+
+  let load = async fn(): void {
+    if (loaded) { return }
+    loaded = true
+    if (host.store !== null && typeof host.store === "object") {
+      let saved = await host.store.load()
+      for (let s of (Array.isArray(saved) ? saved : [])) {
+        if (s.status === "running" || s.status === "queued") {
+          s.status = "stopped"
+          if (typeof s.endedAt !== "number") { s.endedAt = now() }
+        }
+        sessions.set(s.id, s)
+      }
+    }
+    changed()
+  }
+
+  let get = fn(id: string): AgentSession? { return sessions.get(id) ?? null }
+
+  return {
+    load: load,
+    flush: async fn(): void {
+      while (pendingSaves > 0) { await delay(WAIT_STEP_MS) }
+    },
+    subscribe: fn(l: () => void): any {
+      listeners.push(l)
+      return fn() {
+        let i = listeners.indexOf(l)
+        if (i >= 0) { listeners.splice(i, 1) }
+      }
+    },
+    list: fn(): AgentSession[] {
+      return allSessions(sessions).sort(fn(a, b) { return a.startedAt - b.startedAt })
+    },
+    get: get,
+    wait: async fn(id: string, opts: WaitOptions?): any {
+      let o = opts ?? {}
+      let deadline = now() + (typeof o.timeoutMs === "number" ? o.timeoutMs : 120000)
+      let signal = o.signal ?? null
+      while (isBusy(get(id)) && now() < deadline && !(signal !== null && signal.aborted === true)) {
+        await delay(Math.min(WAIT_STEP_MS, Math.max(1, deadline - now())))
+      }
+      return get(id)
+    },
+    dismissFinished: fn(id: string): void {
+      let prefix = "Agent " + id + " ("
+      let i = parentQueue.length - 1
+      while (i >= 0) {
+        if (parentQueue[i].startsWith(prefix)) { parentQueue.splice(i, 1) }
+        i = i - 1
+      }
+    },
+    drainParentNotifications: fn(): string[] {
+      return parentQueue.splice(0, parentQueue.length)
+    },
+    hasPendingNotifications: fn(): boolean { return parentQueue.length > 0 },
+    spawn: async fn(req: SpawnRequest): SpawnResult {
+      let profile = profileById(req.profileId)
+      if (profile === null) {
+        let ids = host.profiles().map(fn(p) { return p.id }).join(", ")
+        return { kind: "refused", reason: "No agent type \"" + req.profileId + "\". Available: " + ids + "." }
+      }
+      let prompt = typeof req.prompt === "string" ? req.prompt.trim() : ""
+      if (prompt === "") {
+        return { kind: "refused", reason: "A task needs a self-contained prompt — the agent cannot see this conversation." }
+      }
+      let background = typeof req.background === "boolean" ? req.background : profile.background === true
+      let id = typeof host.newId === "function" ? host.newId() : "agent-" + now().toString(36) + "-" + Math.random().toString(36).slice(2, 7)
+      let session = {
+        id: id,
+        profile: profile.id,
+        description: typeof req.description === "string" && req.description !== "" ? req.description : prompt.slice(0, 80),
+        status: "running",
+        background: background,
+        transcript: [],
+        inbox: [],
+        startedAt: now(),
+        rounds: 0,
+        readOnly: req.readOnly === true || profile.readOnly === true
+      }
+      if (typeof req.parentCallId === "string" && req.parentCallId !== "") { session.parentCallId = req.parentCallId }
+      sessions.set(session.id, session)
+      changed()
+      sessionEvent(session)
+      let forceReadOnly = req.readOnly === true
+      let parentSignal = req.signal ?? null
+      if (background) {
+        startBackground(session, async fn() { return await run(session, profile, prompt, forceReadOnly, parentSignal, true) })
+        return { kind: "started", id: session.id }
+      }
+      let out = await run(session, profile, prompt, forceReadOnly, parentSignal, true)
+      return { kind: "done", id: session.id, ok: out.ok, summary: out.summary, rounds: out.rounds }
+    },
+    message: async fn(id: string, text: string, opts: MessageOptions?): MessageResult {
+      await load()
+      let o = opts ?? {}
+      let session = sessions.get(id) ?? null
+      if (session === null) { return { kind: "unknown", id: id } }
+      if (session.status === "running" || session.status === "queued") {
+        session.inbox.push(text)
+        persist(session)
+        return { kind: "queued", id: id }
+      }
+      let profile = profileById(session.profile)
+      if (profile === null) { return { kind: "unknown", id: id } }
+      let wait = o.wait === true
+      let parentSignal = o.signal ?? null
+      session.status = "running"
+      session.endedAt = null
+      session.background = !wait
+      changed()
+      if (!wait) {
+        startBackground(session, async fn() { return await run(session, profile, text, false, parentSignal, false) })
+        return { kind: "resumed", id: id }
+      }
+      let out = await run(session, profile, text, false, parentSignal, false)
+      return { kind: "done", id: id, ok: out.ok, summary: out.summary }
+    },
+    stop: stop,
+    stopAll: fn(): void {
+      for (let s of allSessions(sessions)) { stop(s.id) }
+      parentQueue.splice(0, parentQueue.length)
+    },
+    report: report
+  }
+}

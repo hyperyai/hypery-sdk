@@ -21,6 +21,7 @@
       "default": "./dist/index.js"
     },
     "./agents": {
+      "tish": "./tish/agents/index.tish",
       "types": "./dist/agents/index.d.ts",
       "source": "./src/agents/index.ts",
       "default": "./dist/agents/index.js"
@@ -48,6 +49,7 @@
   ],
   "files": [
     "src/",
+    "tish/",
     "dist/",
     "README.md",
     "!src/**/__tests__"
@@ -56,12 +58,15 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && npm run build:css",
+    "build": "npm run build:core && tsc -p tsconfig.json && node scripts/copy-core.mjs && npm run build:css",
     "build:css": "tailwindcss -i src/styles.css -o dist/styles.css --minify",
     "test": "bun test src",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "typecheck:examples": "tsc -p examples/agents/tsconfig.json"
+    "typecheck:examples": "tsc -p examples/agents/tsconfig.json",
+    "build:core": "tish build tish/agents/index.tish --target js --format esm --types -o src/agents/core",
+    "pretest": "npm run build:core",
+    "test:tish": "node scripts/test-tish.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -81,7 +86,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "@tishlang/tish": "4.2.2"
   },
   "engines": {
     "node": ">=22"

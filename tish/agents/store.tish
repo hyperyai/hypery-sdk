@@ -1,0 +1,80 @@
+// Where agent state lives between reloads. One small key-value interface, implemented once per environment — memory
+// (tests, servers; here), IndexedDB (browsers, the iPad shell) and files (Node, Dune) in the hosts' adapters — and
+// the session and run stores built on it.
+
+import { AgentSession, SessionStore } from "./runtime.tish"
+import { LoopCheckpoint } from "./loop.tish"
+import { Todo } from "./todos.tish"
+
+export type KeyValueStore = {
+  get: (string) => Promise<any>,
+  set: (string, any) => Promise<void>,
+  "delete": (string) => Promise<void>,
+  keys: (string) => Promise<string[]>
+}
+
+// Values are kept as JSON, so a read never shares objects with what was written.
+export fn memoryStore(): KeyValueStore {
+  let map = new Map()
+  return {
+    get: async fn(k: string): any { return map.has(k) ? JSON.parse(map.get(k)) : null },
+    set: async fn(k: string, v: any): void { map.set(k, JSON.stringify(v)) },
+    "delete": async fn(k: string): void { map.delete(k) },
+    keys: async fn(prefix: string): string[] {
+      let out = []
+      for (let k of map.keys()) { if (k.startsWith(prefix)) { out.push(k) } }
+      return out
+    }
+  }
+}
+
+async fn loadAll(kv: KeyValueStore, prefix: string): any[] {
+  let out = []
+  for (let k of await kv.keys(prefix)) {
+    let v = await kv.get(k)
+    if (v !== null) { out.push(v) }
+  }
+  return out
+}
+
+// Agent sessions under `<scope>:session:<id>` (scope: a conversation, a document, a workspace).
+export fn sessionStore(kv: KeyValueStore, scope: string?): SessionStore {
+  let prefix = (scope ?? "default") + ":session:"
+  return {
+    load: async fn(): AgentSession[] { return await loadAll(kv, prefix) },
+    save: async fn(s: AgentSession): void { await kv.set(prefix + s.id, s) },
+    remove: async fn(id: string): void { await kv["delete"](prefix + id) }
+  }
+}
+
+export type RunStatus = "running" | "done" | "stopped" | "error"
+
+// A main-agent run: its checkpoint (transcript and loop state) and its plan, saved after every round.
+export type AgentRunRecord = {
+  id: string,
+  status: RunStatus,
+  createdAt: number,
+  updatedAt: number,
+  checkpoint: LoopCheckpoint,
+  todos: Todo[]?,
+  // The host's own fields (the request, the document, the model…).
+  meta: any?,
+  error: string?
+}
+
+export type RunStore = {
+  get: (string) => Promise<AgentRunRecord?>,
+  save: (AgentRunRecord) => Promise<void>,
+  list: () => Promise<AgentRunRecord[]>,
+  remove: (string) => Promise<void>
+}
+
+export fn runStore(kv: KeyValueStore, scope: string?): RunStore {
+  let prefix = (scope ?? "default") + ":run:"
+  return {
+    get: async fn(id: string): any { return await kv.get(prefix + id) },
+    save: async fn(run: AgentRunRecord): void { await kv.set(prefix + run.id, run) },
+    list: async fn(): AgentRunRecord[] { return await loadAll(kv, prefix) },
+    remove: async fn(id: string): void { await kv["delete"](prefix + id) }
+  }
+}

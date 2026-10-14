@@ -2,7 +2,7 @@
 // A separate entry point (`@hyperyai/sdk/agents/react`) so Node and Dune never load React.
 
 import { useMemo, useSyncExternalStore } from 'react'
-import type { AgentRuntime, AgentSession } from './runtime.js'
+import type { AgentRuntime, AgentSession } from './core/runtime.js'
 
 /** The runtime's agents, live. */
 export function useAgents(runtime: AgentRuntime): AgentSession[] {

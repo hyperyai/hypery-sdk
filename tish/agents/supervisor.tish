@@ -1,0 +1,152 @@
+// The supervisor loop in code, not only in the prompt: build → review → fix → review again, until the reviewer passes
+// it or the rounds run out (Cursor / Claude Code style "keep going until it's done and checked"). Uses the runtime's
+// agents, so the builder keeps its context across fixes (send_message), and the parent sees one result.
+
+import { LoopTool } from "./loop.tish"
+import { AgentRuntime } from "./runtime.tish"
+import { StopSignal, ToolCall, ToolRun } from "./types.tish"
+
+export type SupervisorEvent = {
+  phase: "build" | "review" | "fix",
+  round: number,
+  agentId: string?,
+  verdict: ("pass" | "fail")?,
+  text: string?
+}
+
+export type SupervisedTask = {
+  // What to build, self-contained (the agents can't see the parent's conversation).
+  request: string,
+  // What "done" means: acceptance criteria the reviewer checks. Defaults to the request.
+  criteria: string?,
+  builder: string?,
+  reviewer: string?,
+  // Review rounds before giving up. Default 3.
+  maxReviews: number?,
+  signal: StopSignal?,
+  onEvent: ((SupervisorEvent) => void)?
+}
+
+export type SupervisedResult = {
+  passed: boolean,
+  reviews: number,
+  builderId: string,
+  // The builder's last report.
+  report: string,
+  // The reviewer's last verdict text.
+  review: string
+}
+
+// The words of a line, uppercased: letters and digits, split on everything else.
+fn words(line: string): string[] {
+  let out = []
+  let current = ""
+  for (let ch of line.toUpperCase()) {
+    let letter = (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_"
+    if (letter) {
+      current = current + ch
+    } else if (current !== "") {
+      out.push(current)
+      current = ""
+    }
+  }
+  if (current !== "") { out.push(current) }
+  return out
+}
+
+// PASS or FAIL from a reviewer's answer (its first line); anything else counts as FAIL.
+export fn verdictOf(text: string): "pass" | "fail" {
+  let first = text.trim().split("\n")[0] ?? ""
+  let w = words(first)
+  return w.includes("PASS") && !w.includes("FAIL") ? "pass" : "fail"
+}
+
+export async fn runSupervised(runtime: AgentRuntime, task: SupervisedTask): SupervisedResult {
+  let builder = typeof task.builder === "string" ? task.builder : "builder"
+  let reviewer = typeof task.reviewer === "string" ? task.reviewer : "reviewer"
+  let maxReviews = Math.max(1, typeof task.maxReviews === "number" ? task.maxReviews : 3)
+  let signal = task.signal ?? null
+  let onEvent = typeof task.onEvent === "function" ? task.onEvent : fn(e) {}
+  onEvent({ phase: "build", round: 0 })
+  let built = await runtime.spawn({ profileId: builder, prompt: task.request, description: "Build", signal: signal })
+  if (built.kind !== "done") {
+    return { passed: false, reviews: 0, builderId: built.kind === "started" ? built.id : "", report: built.kind === "refused" ? built.reason : "", review: "" }
+  }
+  let report = built.summary
+  let review = ""
+  let criteria = typeof task.criteria === "string" ? task.criteria : task.request
+  let round = 1
+  while (round <= maxReviews) {
+    if (signal !== null && signal.aborted === true) { break }
+    let checked = await runtime.spawn({
+      profileId: reviewer,
+      description: "Review " + String(round),
+      signal: signal,
+      prompt: [
+        "Check this work. Look at the actual result, not only the report.",
+        "Request:\n" + task.request,
+        "Acceptance criteria:\n" + criteria,
+        "The builder's report:\n" + report,
+        "Answer PASS or FAIL on the first line; for FAIL, a numbered list of specific fixes."
+      ].join("\n\n")
+    })
+    review = checked.kind === "done" ? checked.summary : (checked.kind === "refused" ? checked.reason : "")
+    let verdict = verdictOf(review)
+    onEvent({ phase: "review", round: round, agentId: checked.kind === "done" ? checked.id : null, verdict: verdict, text: review })
+    if (verdict === "pass") { return { passed: true, reviews: round, builderId: built.id, report: report, review: review } }
+    if (round === maxReviews) { break }
+    onEvent({ phase: "fix", round: round, agentId: built.id })
+    let fixed = await runtime.message(built.id, "The review failed. Fix these, check your work, and report what you changed:\n" + review, { wait: true, signal: signal })
+    if (fixed.kind === "done") { report = fixed.summary }
+    round = round + 1
+  }
+  return { passed: false, reviews: maxReviews, builderId: built.id, report: report, review: review }
+}
+
+export const SUPERVISE_TOOL = "build_and_review"
+
+// The supervisor as a parent tool: hand it a change and its acceptance criteria; it builds, reviews and fixes.
+export const superviseTool: LoopTool = {
+  readOnly: false,
+  acts: true,
+  spec: {
+    type: "function",
+    "function": {
+      name: SUPERVISE_TOOL,
+      description: "Have a builder agent make a change and a reviewer agent check it against the acceptance criteria, fixing and re-reviewing until it passes (up to 3 reviews). Returns PASS/FAIL, the builder's report and the last review. The agents cannot see this conversation: make the request self-contained.",
+      parameters: {
+        type: "object",
+        properties: {
+          request: { type: "string", description: "The change, self-contained (scope, goal, constraints)." },
+          criteria: { type: "string", description: "What done means, checkably." },
+          builder: { type: "string", description: "Agent type that builds (default builder)." },
+          max_reviews: { type: "number" }
+        },
+        required: ["request"]
+      }
+    }
+  }
+}
+
+export type SuperviseToolOptions = { signal: StopSignal? }
+
+export async fn execSuperviseTool(runtime: AgentRuntime, call: ToolCall, opts: SuperviseToolOptions?): ToolRun {
+  let o = opts ?? {}
+  let args = {}
+  try { args = JSON.parse(call.argsText === "" ? "{}" : call.argsText) } catch (e) { args = {} }
+  if (typeof args.request !== "string" || args.request === "") {
+    return { id: call.id, name: call.name, argsText: call.argsText, ok: false, summary: "missing request", content: JSON.stringify({ error: "A request is required." }) }
+  }
+  let r = await runSupervised(runtime, {
+    request: args.request,
+    criteria: typeof args.criteria === "string" ? args.criteria : null,
+    builder: typeof args.builder === "string" ? args.builder : null,
+    maxReviews: typeof args.max_reviews === "number" ? args.max_reviews : null,
+    signal: o.signal ?? null
+  })
+  return {
+    id: call.id, name: call.name, argsText: call.argsText, ok: true,
+    summary: (r.passed ? "PASS" : "FAIL") + " after " + String(r.reviews) + " review" + (r.reviews === 1 ? "" : "s"),
+    content: JSON.stringify({ passed: r.passed, reviews: r.reviews, builder_id: r.builderId, report: r.report, review: r.review })
+  }
+}
