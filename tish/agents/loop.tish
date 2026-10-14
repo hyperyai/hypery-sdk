@@ -13,7 +13,7 @@
 // no event to wait for, on any target.
 
 import { compactTranscript, fitImagesToBudget, pruneOldImages, CompactOptions } from "./context.tish"
-import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, StopSignal, ToolCall, ToolRun } from "./types.tish"
+import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, StopSignal, ToolCall, ToolChoice, ToolRun } from "./types.tish"
 
 export type LoopTool = {
   spec: ChatToolSpec,
@@ -82,7 +82,11 @@ export type LoopOptions = {
   // device continues from there (`resumeRun`). Awaited, so a save completes before the next round starts.
   checkpoint: ((LoopCheckpoint) => any)?,
   // Continue a checkpointed run: its `acted` and remaining nudges carry over.
-  resumeState: ResumeState?
+  resumeState: ResumeState?,
+  // Make the model call a tool: a `ToolChoice` for every round, or a function of the round number (0 first) returning
+  // one, or null for the model's own choice. Every round "required" never ends by itself (it runs to `maxRounds`):
+  // force the first round (`fn(r) { return r === 0 ? forceTool("plan") : null }`) or stop with `stopped`.
+  toolChoice: (ToolChoice | ((number) => ToolChoice?))?
 }
 
 export type LoopOutcome = {
@@ -214,11 +218,17 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     onReasoningDelta: hook(hooks, "onReasoningDelta"),
     onToolProgress: hook(hooks, "onToolProgress")
   }
-  let call = async fn(msgs: ChatMessage[], tools: ChatToolSpec[]): any {
+  let choiceFor = fn(round: number): any {
+    let c = opts.toolChoice ?? null
+    if (typeof c === "function") { c = c(round) ?? null }
+    return c
+  }
+  let call = async fn(msgs: ChatMessage[], tools: ChatToolSpec[], choice: any): any {
     let attempt = 0
     while (true) {
       try {
-        return await opts.callModel(msgs, tools, modelHooks, signal)
+        if (choice === null || tools.length === 0) { return await opts.callModel(msgs, tools, modelHooks, signal) }
+        return await opts.callModel(msgs, tools, modelHooks, signal, { toolChoice: choice })
       } catch (err) {
         if (isStopped() || attempt >= retries || !recoverable(err)) { throw err }
       }
@@ -239,7 +249,7 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     let onStart = hook(hooks, "onAssistantStart")
     if (onStart !== null) { onStart(round) }
 
-    let turn = await call(messages, specs)
+    let turn = await call(messages, specs, choiceFor(round))
     text = turn.text
     let toolCalls = Array.isArray(turn.toolCalls) ? turn.toolCalls : []
     if (toolCalls.length > 0) {
@@ -325,7 +335,7 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
 
   // Out of rounds with tools still pending: wrap up in words, so the user gets an answer.
   messages.push({ role: "user", content: "You have reached the tool limit for this turn. Summarise what you changed and what is left, without calling more tools." })
-  let final = await call(messages, [])
+  let final = await call(messages, [], null)
   messages.push({ role: "assistant", content: final.text })
   await save(maxRounds, true)
   return { messages: messages, text: final.text, rounds: maxRounds, exhausted: true, stopped: false, acted: acted }

@@ -16,7 +16,7 @@ if (vm !== js) {
   console.error('\nThe JavaScript build printed something else:\n' + js)
   process.exit(1)
 }
-const expected = ['foreground: done true', 'background: started -> done notes=2 true true', 'stop: true stopped', 'stopAll: stopped', 'supervised: true reviews=1', 'stream: café ✓ done=true']
+const expected = ['foreground: done true', 'background: started -> done notes=2 true true', 'stop: true stopped', 'stopAll: stopped', 'supervised: true reviews=1', 'stream: café ✓ done=true', 'thrown stop: stopped (stopped)', 'profile background: running true true']
 for (const line of expected) {
   if (!vm.includes(line)) { console.error('missing: ' + line); process.exit(1) }
 }

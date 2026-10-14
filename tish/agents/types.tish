@@ -50,8 +50,20 @@ export type ModelHooks = {
 // a native host flips.
 export type StopSignal = { aborted: boolean }
 
-// The host's model call: one streamed assistant turn.
-export type CallModel = (ChatMessage[], ChatToolSpec[], ModelHooks, StopSignal?) => Promise<ModelTurn>
+// Which tool the model must call: "auto" (its choice, the default), "required" (any tool), "none", or one tool by
+// name (`forceTool(name)`), as OpenAI's `tool_choice`.
+export type ToolChoice = "auto" | "required" | "none" | { type: "function", "function": { name: string } }
+
+// Per-call request options a host's model call honours.
+export type ModelRequest = { toolChoice: ToolChoice? }
+
+// The host's model call: one streamed assistant turn. `request` is absent for a plain call.
+export type CallModel = (ChatMessage[], ChatToolSpec[], ModelHooks, StopSignal?, ModelRequest?) => Promise<ModelTurn>
+
+// A `ToolChoice` that makes the model call the tool `name`.
+export fn forceTool(name: string): ToolChoice {
+  return { type: "function", "function": { name: name } }
+}
 
 export type ToolCall = { id: string, name: string, argsText: string }
 
