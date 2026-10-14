@@ -35,18 +35,35 @@ export type LoopHooks = {
   onNudge: ((string) => void)?
 }
 
-// A run's state between rounds — enough to continue it.
+// A finished tool call, kept in a checkpoint so a resumed run answers it from here instead of running it again.
+export type ToolResultRecord = { id: string, name: string, argsText: string, ok: boolean, summary: string?, content: string }
+
+// A run's state — enough to continue it. Saved at the end of every round and after every tool call.
 export type LoopCheckpoint = {
   messages: ChatMessage[],
   round: number,
   acted: boolean,
   nudgesLeft: number,
-  done: boolean
+  done: boolean,
+  // The round's finished tool calls by call id. Saved after each call completes; on a resume, a call in here whose
+  // result is missing from `messages` is answered with it, so the tool is never run twice. Empty at a round's end.
+  toolResults: any,
+  // Rounds so far that only read (requireAction's `maxReadRounds`).
+  readRounds: number,
+  // The next model call must call a tool (the reading limit was reached).
+  mustCallTool: boolean
 }
 
-export type ResumeState = { acted: boolean?, nudgesLeft: number?, round: number? }
+export type ResumeState = { acted: boolean?, nudgesLeft: number?, round: number?, toolResults: any?, readRounds: number?, mustCallTool: boolean? }
 
-export type RequireAction = { nudges: number?, message: string? }
+export type RequireAction = {
+  nudges: number?,
+  message: string?,
+  // After this many rounds of only read-only tool calls with nothing acted, the model is told to act
+  // (`readMessage`) and its next call must call a tool. 0 or absent = no limit.
+  maxReadRounds: number?,
+  readMessage: string?
+}
 
 export type ContextOptions = { keepImageTurns: number?, maxRequestChars: number?, compact: CompactOptions? }
 
@@ -102,6 +119,7 @@ export type LoopOutcome = {
 
 export const DEFAULT_MAX_ROUNDS = 40
 export const DEFAULT_MAX_PARALLEL = 4
+export const DEFAULT_READ_NUDGE = "You have read enough to start. Make the change now with the tools that make changes; read more only if a change fails."
 export const DEFAULT_ACTION_NUDGE = "You have not changed anything yet. Stop reading and do what was asked now, with the tools that make changes. If you truly cannot, say exactly what is blocking you."
 
 const RENDER_TURN_PREFIX = "Result of "
@@ -171,6 +189,48 @@ export fn repairTranscript(messages: ChatMessage[]): ChatMessage[] {
   return messages
 }
 
+fn requireOf(requireAction: any): any {
+  if (requireAction === true) { return {} }
+  if (requireAction !== null && typeof requireAction === "object") { return requireAction }
+  return null
+}
+
+// How many nudges a run starts with, for its options' `requireAction`.
+export fn initialNudges(requireAction: any): number {
+  let require = requireOf(requireAction)
+  if (require === null) { return 0 }
+  return typeof require.nudges === "number" ? require.nudges : 2
+}
+
+fn resultMessage(r: any): any {
+  return { role: "tool", tool_call_id: r.id, name: r.name, content: r.content }
+}
+
+// Answer, from a checkpoint's `toolResults`, the calls that finished before an interruption but whose results never
+// reached the transcript.
+export fn restoreToolResults(messages: ChatMessage[], results: any): ChatMessage[] {
+  if (results === null || typeof results !== "object") { return messages }
+  let i = 0
+  while (i < messages.length) {
+    let m = messages[i]
+    if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      let j = i + 1
+      let answered = new Set()
+      while (j < messages.length && messages[j].role === "tool") {
+        answered.add(messages[j].tool_call_id ?? "")
+        j = j + 1
+      }
+      let found = m.tool_calls.filter(fn(c) { return !answered.has(c.id) && results[c.id] !== null && typeof results[c.id] === "object" })
+      if (found.length > 0) {
+        messages.splice(j, 0, ...found.map(fn(c) { return resultMessage(results[c.id]) }))
+        i = j + found.length - 1
+      }
+    }
+    i = i + 1
+  }
+  return messages
+}
+
 fn hook(hooks: LoopHooks?, name: string): any {
   if (hooks === null || typeof hooks !== "object") { return null }
   let h = hooks[name]
@@ -185,17 +245,19 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
   let specs = opts.tools.map(fn(t) { return t.spec })
   let parallelNames = new Set(opts.tools.filter(fn(t) { return t.readOnly === true }).map(fn(t) { return t.spec["function"].name }))
   let actingNames = new Set(opts.tools.filter(fn(t) { return typeof t.acts === "boolean" ? t.acts : t.readOnly !== true }).map(fn(t) { return t.spec["function"].name }))
-  let require = null
-  if (opts.requireAction === true) { require = {} }
-  if (opts.requireAction !== null && typeof opts.requireAction === "object") { require = opts.requireAction }
+  let require = requireOf(opts.requireAction)
   let resume = opts.resumeState ?? {}
-  let nudgesLeft = typeof resume.nudgesLeft === "number" ? resume.nudgesLeft : (require !== null ? (typeof require.nudges === "number" ? require.nudges : 2) : 0)
+  let nudgesLeft = typeof resume.nudgesLeft === "number" ? resume.nudgesLeft : initialNudges(opts.requireAction)
+  let maxReadRounds = require !== null && typeof require.maxReadRounds === "number" ? require.maxReadRounds : 0
+  let readRounds = typeof resume.readRounds === "number" ? resume.readRounds : 0
+  let mustCallTool = resume.mustCallTool === true
+  let toolResults = {}
   let signal = opts.signal ?? null
   let isStopped = fn(): boolean {
     if (signal !== null && signal.aborted === true) { return true }
     return typeof opts.stopped === "function" && opts.stopped() === true
   }
-  let messages = repairTranscript(opts.messages.slice())
+  let messages = repairTranscript(restoreToolResults(opts.messages.slice(), resume.toolResults ?? null))
   let text = ""
   let acted = resume.acted === true
   let retries = typeof opts.modelRetries === "number" ? opts.modelRetries : 2
@@ -205,8 +267,17 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
 
   let save = async fn(round: number, done: boolean): void {
     if (typeof opts.checkpoint === "function") {
-      await opts.checkpoint({ messages: messages.slice(), round: round, acted: acted, nudgesLeft: nudgesLeft, done: done })
+      await opts.checkpoint({
+        messages: messages.slice(), round: round, acted: acted, nudgesLeft: nudgesLeft, done: done,
+        toolResults: { ...toolResults }, readRounds: readRounds, mustCallTool: mustCallTool
+      })
     }
+  }
+  // Saves after each tool call, one at a time even when calls finish together.
+  let saving = Promise.resolve(null)
+  let saveInOrder = fn(round: number): any {
+    saving = saving.then(fn() { return save(round, false) })
+    return saving
   }
   let drain = fn(): string[] {
     if (typeof opts.drainNotifications !== "function") { return [] }
@@ -221,6 +292,7 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
   let choiceFor = fn(round: number): any {
     let c = opts.toolChoice ?? null
     if (typeof c === "function") { c = c(round) ?? null }
+    if (c === null && mustCallTool) { c = "required" }
     return c
   }
   let call = async fn(msgs: ChatMessage[], tools: ChatToolSpec[], choice: any): any {
@@ -250,6 +322,7 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     if (onStart !== null) { onStart(round) }
 
     let turn = await call(messages, specs, choiceFor(round))
+    mustCallTool = false
     text = turn.text
     let toolCalls = Array.isArray(turn.toolCalls) ? turn.toolCalls : []
     if (toolCalls.length > 0) {
@@ -304,20 +377,28 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
       }
       let onToolStart = hook(hooks, "onToolStart")
       if (onToolStart !== null) { for (let info of batch) { onToolStart(info) } }
+      let onToolEnd = hook(hooks, "onToolEnd")
       let runs = await Promise.all(batch.map(async fn(info) {
+        let run = null
         try {
-          return await opts.execTool(info)
+          run = await opts.execTool(info)
         } catch (err) {
           let message = errorMessage(err)
-          return { id: info.id, name: info.name, argsText: info.argsText, ok: false, summary: message, content: JSON.stringify({ error: message }) }
+          run = { id: info.id, name: info.name, argsText: info.argsText, ok: false, summary: message, content: JSON.stringify({ error: message }) }
         }
-      }))
-      let onToolEnd = hook(hooks, "onToolEnd")
-      for (let run of runs) {
         let actedHere = typeof run.acted === "boolean" ? run.acted : actingNames.has(run.name)
         if (run.ok === true && actedHere) { acted = true }
         if (onToolEnd !== null) { onToolEnd(run) }
-        messages.push({ role: "tool", tool_call_id: run.id, name: run.name, content: truncateResult(run.content, maxResultChars) })
+        // Saved at once, keyed by the call id: a resume answers this call from here rather than running it again.
+        toolResults[info.id] = {
+          id: info.id, name: run.name, argsText: info.argsText, ok: run.ok === true,
+          summary: run.summary ?? null, content: truncateResult(run.content, maxResultChars)
+        }
+        await saveInOrder(round + 1)
+        return run
+      }))
+      for (let run of runs) {
+        messages.push(resultMessage(toolResults[run.id] ?? { id: run.id, name: run.name, content: truncateResult(run.content, maxResultChars) }))
         if (Array.isArray(run.images) && run.images.length > 0) {
           let label = run.images.length === 1 ? "the rendered view" : String(run.images.length) + " rendered views"
           let parts = [{ type: "text", text: RENDER_TURN_PREFIX + run.name + ": " + label + "." }]
@@ -327,6 +408,18 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
       }
     }
     for (let m of imageTurns) { messages.push(m) }
+    toolResults = {}
+    // A round that only read, with nothing acted yet: after `maxReadRounds` of them, act, with a tool, next.
+    if (require !== null && !acted && actingNames.size > 0) {
+      readRounds = readRounds + 1
+      if (maxReadRounds > 0 && readRounds === maxReadRounds) {
+        let note = typeof require.readMessage === "string" ? require.readMessage : DEFAULT_READ_NUDGE
+        let onNudge = hook(hooks, "onNudge")
+        if (onNudge !== null) { onNudge(note) }
+        messages.push({ role: "user", content: note })
+        mustCallTool = true
+      }
+    }
     let onRoundEnd = hook(hooks, "onRoundEnd")
     if (onRoundEnd !== null) { onRoundEnd(round) }
     await save(round + 1, false)

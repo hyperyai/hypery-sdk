@@ -41,13 +41,16 @@ Assistant turn → tool calls → results → repeat, until the model is done.
 - **Keeps going until it acts** — `requireAction: true`. A turn asked to change something that tries to finish having
   only read is told to act (twice at most), instead of ending after minutes of reading with nothing done. Handing the
   work to an agent that can make changes (`task`, `send_message`) counts as acting; a tool result can say so itself
-  with `acted`.
+  with `acted`. `requireAction: { maxReadRounds: 4 }` also caps the reading: after that many rounds of only
+  read-only calls it is told to act (`readMessage`) and its next model call must call a tool.
 - **Survives a flaky connection.** A stalled or dropped model stream is retried (`modelRetries`, default 2).
 - **Notifications between rounds** — `drainNotifications`. Finished background agents, agents' reports and questions,
   and messages for this agent arrive here; one arriving just as the model stops gives it another round.
 - **Stays inside the request** — `context`. Older rendered views are dropped (`keepImageTurns`), the request is fitted
   under Hypery's 4.5 MB limit, and a long transcript is compacted (`compact: { maxChars, summarize }`).
-- **Checkpoints** — `checkpoint` is called (and awaited) after every round with everything needed to continue.
+- **Checkpoints** — `checkpoint` is called (and awaited) after every round, and after every tool call, with
+  everything needed to continue. `toolResults` holds the round's finished calls by call id, so a resumed run answers
+  them from there and never runs a tool twice.
 
 ```ts
 const outcome = await runAgentLoop({
@@ -141,9 +144,9 @@ reviewed again, up to `maxReviews` (3). Also available to the main agent as the 
 
 ### 7. Sessions that survive — runs and stores
 
-- `runPersistent({ id, runs, ...loopOptions })` checkpoints the main agent's run after every round (and its plan).
+- `runPersistent({ id, runs, ...loopOptions })` checkpoints the main agent's run after every round and tool call (and its plan).
 - `interruptedRuns(runs)` lists runs a reload, crash or sleeping device cut off; `resumeRun(id, runs, options)`
-  continues one — calls that were cut off mid-flight are answered as interrupted so the model checks and redoes them.
+  continues one — calls that finished are answered from the checkpoint, calls that were cut off mid-flight are answered as interrupted so the model checks and redoes them.
 - Stores: `memoryStore()`, `indexedDbStore()` (browsers, the iPad shell), `fileStore(dir)` (Node, Dune). Agent
   sessions (`sessionStore`) and runs (`runStore`) are scoped by a key you choose — a conversation, a document.
 
