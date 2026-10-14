@@ -48,6 +48,8 @@ export function HyperyTestProvider({ user = null, children, ...overrides }: Hype
     logout: noop,
     refreshAuth: noop,
     getAccessToken: async () => (user ? 'test-access-token' : null),
+    requestScopes: async () => ({ ok: false, reason: 'cancelled' }),
+    withScope: (_scope, fn) => fn(),
     clientId: 'test-client',
     gatewayUrl: 'https://hypery.test',
     authenticatedFetch: (input, init) => fetch(input, init),
@@ -56,6 +58,7 @@ export function HyperyTestProvider({ user = null, children, ...overrides }: Hype
     authRequired: false,
     clearAuthRequired: () => {},
     ...overrides,
+    grantedScopes: overrides.grantedScopes ?? null,
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

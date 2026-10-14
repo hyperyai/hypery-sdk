@@ -35,10 +35,15 @@ import {
 import { resolvePostLogoutRedirect } from './logout-redirect.js';
 import { parseError } from './parse-error.js';
 import { openPopup, resolveInteractionMode } from './popup.js';
+import {
+  AUTH_POPUP_NAME,
+  requestScopes as runScopeRequest,
+  withScope as runWithScope,
+  type RequestScopesResult,
+  type ScopeRequestMode,
+} from './scopes.js';
 import { TokenStorage } from './storage.js';
 
-/** window.open target name; also read back in the callback to detect popup context. */
-const AUTH_POPUP_NAME = 'hypery-sdk-popup';
 
 /**
  * Read a provider hint from `login()`'s argument. Ignores anything else, so
@@ -87,6 +92,14 @@ export function HyperyProvider({
   const [authRequired, setAuthRequired] = useState(false);
   // Single-flight refresh: N concurrent expired requests share ONE token POST.
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
+  // Scopes the stored token actually carries (token response `scope`).
+  const [grantedScopes, setGrantedScopes] = useState<string[] | null>(() => {
+    try {
+      return new TokenStorage(config.storage || 'localStorage').getTokens()?.scopes ?? null;
+    } catch {
+      return null;
+    }
+  });
 
   const storage = new TokenStorage(config.storage || 'localStorage');
   // Default scopes match the app's default OAuth configuration.
@@ -112,7 +125,10 @@ export function HyperyProvider({
               clientId: config.clientId,
               gatewayUrl: config.gatewayUrl,
             });
-            storage.saveTokens(newTokens);
+            // A refresh response may omit `scope`; the grant is unchanged then.
+            const saved = { ...newTokens, scopes: newTokens.scopes ?? tokens.scopes };
+            storage.saveTokens(saved);
+            setGrantedScopes(saved.scopes ?? null);
             return newTokens.accessToken;
           } catch (err) {
             console.error('Failed to refresh token:', err);
@@ -302,6 +318,7 @@ export function HyperyProvider({
         state: result.data.state ?? null,
       });
       storage.saveTokens(tokens);
+      setGrantedScopes(tokens.scopes ?? null);
       const userInfo = await getUserInfo(tokens.accessToken, config.gatewayUrl);
       storage.saveUser(userInfo);
       setUser(userInfo);
@@ -332,6 +349,7 @@ export function HyperyProvider({
     storage.clear();
     setUser(null);
     setError(null);
+    setGrantedScopes(null);
 
     if (typeof window !== 'undefined') {
       // Also clear any pending OAuth login transaction (verifier + state)
@@ -351,6 +369,44 @@ export function HyperyProvider({
       }
     }
   }, [config.storage, config.gatewayUrl, config.postLogoutRedirect, storage]);
+
+  /**
+   * Ask for more scopes: runs the authorize flow for the union of the granted
+   * (or configured) scopes and `extra`. Already-granted scopes sign in silently;
+   * new ones show consent. The new token replaces the stored one.
+   */
+  const requestScopes = useCallback(
+    async (extra: string[], options?: { mode?: ScopeRequestMode; popup?: Window | null }): Promise<RequestScopesResult> => {
+      const current = storage.getTokens()?.scopes ?? scopes;
+      const mode: ScopeRequestMode = options?.mode
+        || (config.openAuthUrl ? 'external' : resolveInteractionMode(config.interactionMode));
+      try {
+        const result = await runScopeRequest(extra, {
+          clientId: config.clientId,
+          redirectUri: config.redirectUri,
+          gatewayUrl: config.gatewayUrl,
+          storage: config.storage || 'localStorage',
+          currentScopes: current,
+          mode,
+          openUrl: config.openAuthUrl,
+          tokenStorage: storage,
+          popup: options?.popup,
+        });
+        if (result.ok) setGrantedScopes(result.grantedScopes);
+        return result;
+      } catch (err) {
+        console.error('Scope request failed:', err);
+        return { ok: false, reason: 'denied', error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+    [config, scopes],
+  );
+
+  const withScope = useCallback(
+    <T,>(scope: string | string[], fn: () => Promise<T>): Promise<T> =>
+      runWithScope(scope, fn, (s) => requestScopes(s)),
+    [requestScopes],
+  );
 
   /**
    * Manually refresh auth state
@@ -373,10 +429,11 @@ export function HyperyProvider({
       // Popup auth: this callback page is running inside the auth popup we opened.
       // Don't exchange here — relay the code to the opener (which holds the PKCE
       // verifier) and close. The opener validates event.origin (see loginPopup).
-      if (code && window.opener && !window.opener.closed && window.name === AUTH_POPUP_NAME) {
+      const oauthError = params.get('error');
+      if ((code || oauthError) && window.opener && !window.opener.closed && window.name === AUTH_POPUP_NAME) {
         try {
           window.opener.postMessage(
-            { type: 'hypery:auth', code, state: returnedState },
+            { type: 'hypery:auth', code, state: returnedState, error: oauthError },
             window.location.origin,
           );
         } catch (err) {
@@ -404,6 +461,7 @@ export function HyperyProvider({
           });
 
           storage.saveTokens(tokens);
+          setGrantedScopes(tokens.scopes ?? null);
 
           // Fetch user info
           const userInfo = await getUserInfo(
@@ -446,6 +504,9 @@ export function HyperyProvider({
     logout,
     refreshAuth,
     getAccessToken,
+    grantedScopes,
+    requestScopes,
+    withScope,
     clientId: config.clientId,
     gatewayUrl: config.gatewayUrl,
     authenticatedFetch,

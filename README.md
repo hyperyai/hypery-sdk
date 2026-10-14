@@ -160,6 +160,7 @@ screenshots in these docs are rendered this way.
 | [Provider and configuration](./docs/PROVIDER.md) | `HyperyProvider`, every `HyperyAuthConfig` option (`scopes`, `storage`, `interactionMode`, `onUnauthorized`, `onRestricted`), `BrandingConfig`, the context value |
 | [Components](./docs/COMPONENTS.md) | `SignIn`, `SignUp`, `SignInForm`, `AuthButton`, `AuthModal`, `ModernAuthForm`, `UserButton`, `UserProfile`, `WorkspaceSwitcher`, `SignedIn`, `SignedOut`, `RedirectToSignIn`, `Protect` (with screenshots) |
 | [Hooks](./docs/HOOKS.md) | `useAuth`, `useHyperyAuth`, `useUser`, `useMemberships`, `useActiveWorkspace`, `setActiveWorkspace`, `useWallet`, `useBuyerWallet`, `useError` |
+| [Scopes](./docs/SCOPES.md) | Incremental consent: `requestScopes`, `withScope`, `grantedScopes`, `InsufficientScopeError`, `parseInsufficientScope`, native hosts with `openAuthUrl` |
 | [Checkout](./docs/CHECKOUT.md) | `BuyButton`, `SubscribeButton`, `useCheckout`, `useMarketplace`, `useAppSubscription`, `planPriceCents`, popup vs redirect, annual billing |
 | [Errors](./docs/ERRORS.md) | Error codes, `parseError` and the `is*Error` guards, `formatTimeUntilReset`, `HyperyModals`, `RestrictionModal`, `SpendingLimitAlert`, `InsufficientCreditsAlert`, `ErrorBoundary` |
 | [Streaming](./docs/STREAMING.md) | `consumeSSEStream`, `parseSSEFrame`, `parseSSEError` |

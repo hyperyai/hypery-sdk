@@ -2,6 +2,8 @@
  * Hypery Auth Types
  */
 
+import type { OpenAuthUrl, RequestScopesResult, ScopeRequestMode, InsufficientScopeError } from '../lib/scopes.js';
+
 /**
  * How interactive auth / card-entry steps are presented.
  *   - `popup`    — a centered popup (seamless; stays on your page). PayPal/Firebase-style.
@@ -110,6 +112,13 @@ export interface HyperyAuthConfig {
    * ```
    */
   postLogoutRedirect?: PostLogoutRedirect;
+  /**
+   * For native hosts (Tauri, Electron, mobile): open the authorize URL outside
+   * the page and resolve with the callback URL it lands on (or `null` on
+   * cancel). When set, {@link AuthContextValue.requestScopes} uses it instead
+   * of a popup or redirect.
+   */
+  openAuthUrl?: OpenAuthUrl;
 }
 
 /** The signed-in Hypery user (from `GET /api/user/me`). */
@@ -126,6 +135,8 @@ export interface AuthTokens {
   refreshToken: string;
   expiresIn: number;
   tokenType: string;
+  /** Scopes this token actually carries, from the token response's `scope` field. */
+  scopes?: string[];
 }
 
 /** Auth state portion of {@link AuthContextValue}. */
@@ -165,6 +176,22 @@ export interface AuthContextValue extends AuthState {
    * 401 retry path). Concurrent calls share ONE in-flight refresh (single-flight).
    */
   getAccessToken: (forceRefresh?: boolean) => Promise<string | null>;
+  /** Scopes the current token carries (from the token response), or `null` when unknown / signed out. */
+  grantedScopes: string[] | null;
+  /**
+   * Ask for more scopes (incremental consent): runs the authorize flow for the
+   * union of the granted scopes and `scopes`, by `openAuthUrl`, popup or
+   * redirect. The new token replaces the stored one.
+   */
+  requestScopes: (
+    scopes: string[],
+    options?: { mode?: ScopeRequestMode; popup?: Window | null },
+  ) => Promise<RequestScopesResult>;
+  /**
+   * Run `fn`; on `insufficient_scope` (a thrown {@link InsufficientScopeError}
+   * or a 403 Response) call `requestScopes` once and run `fn` again.
+   */
+  withScope: <T>(scope: string | string[], fn: () => Promise<T>) => Promise<T>;
   /** OAuth clientId this provider was configured with. */
   clientId: string;
   /** Gateway base URL this provider was configured with. */
