@@ -2,10 +2,10 @@
 // back to the same builder (it keeps its context) until the review passes.
 //   bun examples/agents/supervised.ts
 
-import { AgentRuntime, BUILTIN_PROFILES, runSupervised } from '../../src/agents'
+import { createAgentRuntime, BUILTIN_PROFILES, runSupervised } from '../../src/agents'
 import { doc, docTools, log, model, runDocTool } from './setup'
 
-const runtime = new AgentRuntime({
+const runtime = createAgentRuntime({
   callModel: model,
   profiles: () => BUILTIN_PROFILES,
   childTools: ctx => (ctx.readOnly ? docTools.filter(t => t.readOnly) : docTools),

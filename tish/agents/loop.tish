@@ -1,0 +1,332 @@
+// The agent loop: assistant turn → tool calls → run them → feed the results back → repeat, until the model is done.
+//
+// Shared by every Hypery app (PopCraft's editor agent, Dune's IDE agent, Hypery's own). The loop knows nothing about
+// a product or a transport: the host passes `callModel` and `execTool`. Ported from dune-ide's `runAgentLoop` and
+// PopCraft's lib/agent/loop.ts, with what both lacked:
+// - `requireAction`: a turn asked to change something that ends having changed nothing is told to act, rather than
+//   quietly stopping after a few minutes of reading (Cursor and Claude Code keep going until the work is done);
+// - `drainNotifications` doubles as an inbox: a parent's messages to a running child, a child's reports to its
+//   parent, finished background agents — all land between rounds, and one arriving as the model stops continues it;
+// - a dropped or stalled model stream is retried (dune's isRecoverableModelTimeout).
+//
+// Stopping is a flag the loop checks between rounds and between tools (`signal.aborted`, or `stopped()`): there is
+// no event to wait for, on any target.
+
+import { compactTranscript, fitImagesToBudget, pruneOldImages, CompactOptions } from "./context.tish"
+import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, StopSignal, ToolCall, ToolRun } from "./types.tish"
+
+export type LoopTool = {
+  spec: ChatToolSpec,
+  // Read-only tools (and agent spawns) may run together; anything that edits runs in order.
+  readOnly: boolean?,
+  // Changes something (a document, files): what `requireAction` counts as acting. Defaults to `!readOnly`.
+  acts: boolean?
+}
+
+export type LoopHooks = {
+  onTextDelta: ((string) => void)?,
+  onReasoningDelta: ((string) => void)?,
+  onToolProgress: ((any) => void)?,
+  onAssistantStart: ((number) => void)?,
+  onToolStart: ((ToolCall) => void)?,
+  onToolEnd: ((ToolRun) => void)?,
+  onRoundEnd: ((number) => void)?,
+  // The loop told the model to act (requireAction) — for the host's UI.
+  onNudge: ((string) => void)?
+}
+
+// A run's state between rounds — enough to continue it.
+export type LoopCheckpoint = {
+  messages: ChatMessage[],
+  round: number,
+  acted: boolean,
+  nudgesLeft: number,
+  done: boolean
+}
+
+export type ResumeState = { acted: boolean?, nudgesLeft: number?, round: number? }
+
+export type RequireAction = { nudges: number?, message: string? }
+
+export type ContextOptions = { keepImageTurns: number?, maxRequestChars: number?, compact: CompactOptions? }
+
+export type LoopOptions = {
+  messages: ChatMessage[],
+  tools: LoopTool[],
+  callModel: CallModel,
+  // Run one tool call; returning `ok: false` feeds the error back so the model can correct itself.
+  execTool: (ToolCall) => Promise<ToolRun>,
+  hooks: LoopHooks?,
+  signal: StopSignal?,
+  stopped: (() => boolean)?,
+  // Messages to inject between rounds (inbox, reports, finished background agents).
+  drainNotifications: (() => string[])?,
+  // 0 = unlimited (a backstop, not a budget, is the host's choice). Default 40.
+  maxRounds: number?,
+  // How many independent (read-only) calls may run at once.
+  maxParallel: number?,
+  // Result text longer than this is truncated before it goes back to the model.
+  maxResultChars: number?,
+  // The task asks for a change: if the model tries to finish without having called an acting tool, it is told to
+  // act (at most `nudges` times, default 2), instead of the turn ending with nothing done.
+  requireAction: (boolean | RequireAction)?,
+  // Retries for a model call that fails with a recoverable error (timeouts, dropped streams). Default 2.
+  modelRetries: number?,
+  // Which model errors are worth retrying. Default: timeouts, network drops, 5xx, 408 and 429.
+  isRecoverable: ((any) => boolean)?,
+  // Keep the transcript inside the request: older rendered views are dropped (`keepImageTurns`, default 2), the
+  // request is fitted to `maxRequestChars` (default 4.3 MB minus the tool specs), and a transcript longer than
+  // `compact.maxChars` is compacted.
+  context: ContextOptions?,
+  // Called after every round with the run's state: save it, and a run cut off by a reload, a crash or a sleeping
+  // device continues from there (`resumeRun`). Awaited, so a save completes before the next round starts.
+  checkpoint: ((LoopCheckpoint) => any)?,
+  // Continue a checkpointed run: its `acted` and remaining nudges carry over.
+  resumeState: ResumeState?
+}
+
+export type LoopOutcome = {
+  messages: ChatMessage[],
+  text: string,
+  rounds: number,
+  // Hit `maxRounds` with the model still asking for tools.
+  exhausted: boolean,
+  stopped: boolean,
+  // Whether any acting tool ran.
+  acted: boolean
+}
+
+export const DEFAULT_MAX_ROUNDS = 40
+export const DEFAULT_MAX_PARALLEL = 4
+export const DEFAULT_ACTION_NUDGE = "You have not changed anything yet. Stop reading and do what was asked now, with the tools that make changes. If you truly cannot, say exactly what is blocking you."
+
+const RENDER_TURN_PREFIX = "Result of "
+const RECOVERABLE_WORDS = ["timeout", "timed out", "stalled", "network", "fetch failed", "econnreset", "socket", "stream"]
+
+// Split calls into batches: a run of independent calls together, anything that acts on its own, in order.
+export fn batchCalls(calls: any[], isParallel: (string) => boolean, max: number): any[][] {
+  let batches = []
+  for (let call of calls) {
+    let last = batches.length > 0 ? batches[batches.length - 1] : null
+    let parallel = isParallel(call.name)
+    if (parallel && last !== null && last.length < max && isParallel(last[0].name)) {
+      last.push(call)
+    } else {
+      batches.push([call])
+    }
+  }
+  return batches
+}
+
+export fn truncateResult(text: string, max: number): string {
+  if (text.length <= max) { return text }
+  return text.slice(0, max) + "\n…[truncated " + String(text.length - max) + " characters]"
+}
+
+export fn defaultIsRecoverable(err: any): boolean {
+  if (err === null || typeof err !== "object") { return false }
+  if (typeof err.status === "number") {
+    return err.status >= 500 || err.status === 408 || err.status === 429
+  }
+  let text = (String(err.name ?? "") + " " + String(err.code ?? "") + " " + String(err.message ?? "")).toLowerCase()
+  return RECOVERABLE_WORDS.some(fn(w) { return text.includes(w) })
+}
+
+fn errorMessage(err: any): string {
+  if (err !== null && typeof err === "object" && typeof err.message === "string") { return err.message }
+  return String(err)
+}
+
+// Make a transcript valid to continue: a run cut off mid-round has tool calls without results, which every provider
+// refuses. Each missing result is answered as interrupted, so the model sees what happened and can redo it.
+export fn repairTranscript(messages: ChatMessage[]): ChatMessage[] {
+  let i = 0
+  while (i < messages.length) {
+    let m = messages[i]
+    if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      let j = i + 1
+      let answered = new Set()
+      while (j < messages.length && messages[j].role === "tool") {
+        answered.add(messages[j].tool_call_id ?? "")
+        j = j + 1
+      }
+      let missing = m.tool_calls.filter(fn(c) { return !answered.has(c.id) })
+      if (missing.length > 0) {
+        let fillers = missing.map(fn(c) {
+          return {
+            role: "tool", tool_call_id: c.id, name: c["function"].name,
+            content: JSON.stringify({ error: "interrupted: this call did not finish (the session was interrupted). Check its effect and run it again if needed." })
+          }
+        })
+        messages.splice(j, 0, ...fillers)
+        i = j + missing.length - 1
+      }
+    }
+    i = i + 1
+  }
+  return messages
+}
+
+fn hook(hooks: LoopHooks?, name: string): any {
+  if (hooks === null || typeof hooks !== "object") { return null }
+  let h = hooks[name]
+  return typeof h === "function" ? h : null
+}
+
+export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
+  let maxRounds = typeof opts.maxRounds === "number" ? opts.maxRounds : DEFAULT_MAX_ROUNDS
+  let maxResultChars = typeof opts.maxResultChars === "number" ? opts.maxResultChars : 8000
+  let maxParallel = typeof opts.maxParallel === "number" ? opts.maxParallel : DEFAULT_MAX_PARALLEL
+  let hooks = opts.hooks ?? null
+  let specs = opts.tools.map(fn(t) { return t.spec })
+  let parallelNames = new Set(opts.tools.filter(fn(t) { return t.readOnly === true }).map(fn(t) { return t.spec["function"].name }))
+  let actingNames = new Set(opts.tools.filter(fn(t) { return typeof t.acts === "boolean" ? t.acts : t.readOnly !== true }).map(fn(t) { return t.spec["function"].name }))
+  let require = null
+  if (opts.requireAction === true) { require = {} }
+  if (opts.requireAction !== null && typeof opts.requireAction === "object") { require = opts.requireAction }
+  let resume = opts.resumeState ?? {}
+  let nudgesLeft = typeof resume.nudgesLeft === "number" ? resume.nudgesLeft : (require !== null ? (typeof require.nudges === "number" ? require.nudges : 2) : 0)
+  let signal = opts.signal ?? null
+  let isStopped = fn(): boolean {
+    if (signal !== null && signal.aborted === true) { return true }
+    return typeof opts.stopped === "function" && opts.stopped() === true
+  }
+  let messages = repairTranscript(opts.messages.slice())
+  let text = ""
+  let acted = resume.acted === true
+  let retries = typeof opts.modelRetries === "number" ? opts.modelRetries : 2
+  let recoverable = typeof opts.isRecoverable === "function" ? opts.isRecoverable : defaultIsRecoverable
+  let ctx = opts.context ?? {}
+  let maxRequestChars = typeof ctx.maxRequestChars === "number" ? ctx.maxRequestChars : 4300000
+
+  let save = async fn(round: number, done: boolean): void {
+    if (typeof opts.checkpoint === "function") {
+      await opts.checkpoint({ messages: messages.slice(), round: round, acted: acted, nudgesLeft: nudgesLeft, done: done })
+    }
+  }
+  let drain = fn(): string[] {
+    if (typeof opts.drainNotifications !== "function") { return [] }
+    let notes = opts.drainNotifications()
+    return Array.isArray(notes) ? notes : []
+  }
+  let modelHooks = {
+    onTextDelta: hook(hooks, "onTextDelta"),
+    onReasoningDelta: hook(hooks, "onReasoningDelta"),
+    onToolProgress: hook(hooks, "onToolProgress")
+  }
+  let call = async fn(msgs: ChatMessage[], tools: ChatToolSpec[]): any {
+    let attempt = 0
+    while (true) {
+      try {
+        return await opts.callModel(msgs, tools, modelHooks, signal)
+      } catch (err) {
+        if (isStopped() || attempt >= retries || !recoverable(err)) { throw err }
+      }
+      attempt = attempt + 1
+    }
+  }
+
+  let round = typeof resume.round === "number" ? resume.round : 0
+  while (maxRounds === 0 || round < maxRounds) {
+    if (isStopped()) {
+      await save(round, true)
+      return { messages: messages, text: text, rounds: round, exhausted: false, stopped: true, acted: acted }
+    }
+    for (let note of drain()) { messages.push({ role: "user", content: note }) }
+    pruneOldImages(messages, ctx.keepImageTurns ?? null)
+    if (ctx.compact !== null && typeof ctx.compact === "object") { await compactTranscript(messages, ctx.compact) }
+    fitImagesToBudget(messages, maxRequestChars - JSON.stringify(specs).length)
+    let onStart = hook(hooks, "onAssistantStart")
+    if (onStart !== null) { onStart(round) }
+
+    let turn = await call(messages, specs)
+    text = turn.text
+    let toolCalls = Array.isArray(turn.toolCalls) ? turn.toolCalls : []
+    if (toolCalls.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: turn.text,
+        tool_calls: toolCalls.map(fn(c) { return { id: c.id, type: "function", "function": { name: c.name, arguments: c.arguments } } })
+      })
+    } else {
+      messages.push({ role: "assistant", content: turn.text })
+    }
+
+    if (toolCalls.length === 0) {
+      let onEnd = hook(hooks, "onRoundEnd")
+      if (onEnd !== null) { onEnd(round) }
+      // Anything that arrived while the model was answering (a report, a finished agent) gets one more round.
+      let late = drain()
+      if (late.length > 0) {
+        for (let note of late) { messages.push({ role: "user", content: note }) }
+        round = round + 1
+        continue
+      }
+      // Asked to change something, changed nothing: act (Cursor / Claude Code keep going until the work is done).
+      if (require !== null && !acted && nudgesLeft > 0 && actingNames.size > 0) {
+        nudgesLeft = nudgesLeft - 1
+        let nudge = typeof require.message === "string" ? require.message : DEFAULT_ACTION_NUDGE
+        let onNudge = hook(hooks, "onNudge")
+        if (onNudge !== null) { onNudge(nudge) }
+        messages.push({ role: "user", content: nudge })
+        await save(round + 1, false)
+        round = round + 1
+        continue
+      }
+      await save(round + 1, true)
+      return { messages: messages, text: text, rounds: round + 1, exhausted: false, stopped: false, acted: acted }
+    }
+
+    let calls = toolCalls.map(fn(c) { return { id: c.id, name: c.name, argsText: c.arguments } })
+    // Every tool_call must be answered before any other message, so render images go out after the round's results.
+    let imageTurns = []
+    for (let batch of batchCalls(calls, fn(n) { return parallelNames.has(n) }, maxParallel)) {
+      if (isStopped()) {
+        // Answer the unanswered calls so the transcript stays valid for a resume.
+        for (let c of calls) {
+          let answered = messages.some(fn(m) { return m.role === "tool" && m.tool_call_id === c.id })
+          if (!answered) {
+            messages.push({ role: "tool", tool_call_id: c.id, name: c.name, content: JSON.stringify({ error: "stopped" }) })
+          }
+        }
+        await save(round + 1, true)
+        return { messages: messages, text: text, rounds: round + 1, exhausted: false, stopped: true, acted: acted }
+      }
+      let onToolStart = hook(hooks, "onToolStart")
+      if (onToolStart !== null) { for (let info of batch) { onToolStart(info) } }
+      let runs = await Promise.all(batch.map(async fn(info) {
+        try {
+          return await opts.execTool(info)
+        } catch (err) {
+          let message = errorMessage(err)
+          return { id: info.id, name: info.name, argsText: info.argsText, ok: false, summary: message, content: JSON.stringify({ error: message }) }
+        }
+      }))
+      let onToolEnd = hook(hooks, "onToolEnd")
+      for (let run of runs) {
+        let actedHere = typeof run.acted === "boolean" ? run.acted : actingNames.has(run.name)
+        if (run.ok === true && actedHere) { acted = true }
+        if (onToolEnd !== null) { onToolEnd(run) }
+        messages.push({ role: "tool", tool_call_id: run.id, name: run.name, content: truncateResult(run.content, maxResultChars) })
+        if (Array.isArray(run.images) && run.images.length > 0) {
+          let label = run.images.length === 1 ? "the rendered view" : String(run.images.length) + " rendered views"
+          let parts = [{ type: "text", text: RENDER_TURN_PREFIX + run.name + ": " + label + "." }]
+          for (let url of run.images) { parts.push({ type: "image_url", image_url: { url: url } }) }
+          imageTurns.push({ role: "user", content: parts })
+        }
+      }
+    }
+    for (let m of imageTurns) { messages.push(m) }
+    let onRoundEnd = hook(hooks, "onRoundEnd")
+    if (onRoundEnd !== null) { onRoundEnd(round) }
+    await save(round + 1, false)
+    round = round + 1
+  }
+
+  // Out of rounds with tools still pending: wrap up in words, so the user gets an answer.
+  messages.push({ role: "user", content: "You have reached the tool limit for this turn. Summarise what you changed and what is left, without calling more tools." })
+  let final = await call(messages, [])
+  messages.push({ role: "assistant", content: final.text })
+  await save(maxRounds, true)
+  return { messages: messages, text: final.text, rounds: maxRounds, exhausted: true, stopped: false, acted: acted }
+}

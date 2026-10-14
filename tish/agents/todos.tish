@@ -1,0 +1,85 @@
+// The plan an agent keeps while it works (Claude Code's todo list, dune's manage_todos): a short list of steps with a
+// status, which the agent updates as it goes and the host shows. Saved with the run, so a resumed run keeps its plan.
+
+import { LoopTool } from "./loop.tish"
+import { ToolCall, ToolRun } from "./types.tish"
+
+export type TodoStatus = "pending" | "in_progress" | "done" | "blocked"
+export type Todo = { id: string, text: string, status: TodoStatus, note: string? }
+
+export type TodoList = {
+  // A copy of the steps, in order.
+  get: () => Todo[],
+  // Steps not done yet.
+  open: () => Todo[],
+  // Run one `manage_todos` call against the list.
+  run: (ToolCall) => ToolRun
+}
+
+export const TODO_TOOL = "manage_todos"
+
+const STATUSES = ["pending", "in_progress", "done", "blocked"]
+
+export const todoTool: LoopTool = {
+  readOnly: true,
+  acts: false,
+  spec: {
+    type: "function",
+    "function": {
+      name: TODO_TOOL,
+      description: "Keep your plan for this request: set the whole list of steps (replace), or update steps by id. Mark one step in_progress at a time and done as soon as it is; blocked with a note when you cannot. The user sees this list.",
+      parameters: {
+        type: "object",
+        properties: {
+          replace: { type: "array", description: "The whole plan, in order.", items: { type: "object", properties: { id: { type: "string" }, text: { type: "string" }, status: { type: "string", "enum": STATUSES } }, required: ["text"] } },
+          update: { type: "array", description: "Changes to existing steps.", items: { type: "object", properties: { id: { type: "string" }, status: { type: "string", "enum": STATUSES }, note: { type: "string" }, text: { type: "string" } }, required: ["id"] } }
+        }
+      }
+    }
+  }
+}
+
+fn copy(t: Todo): Todo { return { ...t } }
+
+// A todo list that tells `onChange` whenever the agent changes it.
+export fn createTodoList(initial: Todo[]?, onChange: ((Todo[]) => void)?): TodoList {
+  let items = (initial ?? []).map(copy)
+  let get = fn(): Todo[] { return items.map(copy) }
+  return {
+    get: get,
+    open: fn(): Todo[] { return items.filter(fn(t) { return t.status !== "done" }).map(copy) },
+    run: fn(call: ToolCall): ToolRun {
+      let args = {}
+      try {
+        args = JSON.parse(call.argsText === "" ? "{}" : call.argsText)
+      } catch (e) {
+        return { id: call.id, name: call.name, argsText: call.argsText, ok: false, summary: "invalid arguments", content: JSON.stringify({ error: "Arguments are not valid JSON." }) }
+      }
+      if (Array.isArray(args.replace)) {
+        let next = []
+        let i = 0
+        for (let t of args.replace) {
+          if (typeof t.text === "string" && t.text !== "") {
+            let id = typeof t.id === "string" && t.id !== "" ? t.id : String(i + 1)
+            let status = STATUSES.includes(t.status) ? t.status : "pending"
+            next.push({ id: id, text: t.text, status: status })
+          }
+          i = i + 1
+        }
+        items = next
+      }
+      for (let u of (Array.isArray(args.update) ? args.update : [])) {
+        for (let t of items) {
+          if (t.id === u.id) {
+            if (STATUSES.includes(u.status)) { t.status = u.status }
+            if (typeof u.note === "string") { t.note = u.note }
+            if (typeof u.text === "string" && u.text !== "") { t.text = u.text }
+          }
+        }
+      }
+      if (typeof onChange === "function") { onChange(get()) }
+      let done = items.filter(fn(t) { return t.status === "done" }).length
+      return { id: call.id, name: call.name, argsText: call.argsText, ok: true, summary: String(done) + "/" + String(items.length) + " done", content: JSON.stringify({ todos: items }) }
+    }
+  }
+}

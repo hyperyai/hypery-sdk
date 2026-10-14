@@ -2,12 +2,12 @@
 // finished agent can be messaged again the next day.
 //   bun examples/agents/node-host.ts
 
-import { AgentRuntime, BUILTIN_PROFILES, sessionStore } from '../../src/agents'
+import { createAgentRuntime, BUILTIN_PROFILES, sessionStore } from '../../src/agents'
 import { fileStore } from '../../src/agents/node'
 import { docTools, log, model, runDocTool } from './setup'
 
 const store = sessionStore(fileStore('.agents-example'), 'node-host')
-const make = () => new AgentRuntime({
+const make = () => createAgentRuntime({
   callModel: model,
   profiles: () => BUILTIN_PROFILES,
   childTools: ctx => (ctx.readOnly ? docTools.filter(t => t.readOnly) : docTools),

@@ -3,7 +3,7 @@
 
 import { mkdir, readdir, readFile, rm, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { KeyValueStore } from '../store.js'
+import type { KeyValueStore } from '../core/store.js'
 
 const encode = (key: string) => encodeURIComponent(key) + '.json'
 const decode = (file: string) => decodeURIComponent(file.replace(/\.json$/, ''))

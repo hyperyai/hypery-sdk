@@ -1,0 +1,147 @@
+// Keeping a long session inside the model's request: the whole transcript is re-sent every round, so a session that
+// renders, reads and edits for an hour outgrows the request limit (Hypery's host: 4.5 MB) and the model's context.
+//
+// - pruneOldImages: older rendered views are superseded by newer ones — keep the latest few.
+// - fitImagesToBudget: drop rendered views (oldest first) until the request fits.
+// - compactTranscript: replace the middle of a long transcript with a summary (Claude Code's compaction), keeping the
+//   system prompt, the first request and the latest turns; tool calls are never split from their results.
+
+import { ChatMessage, ChatContentPart, CallModel } from "./types.tish"
+
+const RENDER_TURN_PREFIX = "Result of "
+export const KEEP_IMAGE_TURNS = 2
+
+fn sizeOf(messages: ChatMessage[]): number {
+  return JSON.stringify(messages).length
+}
+
+fn isRenderTurn(m: ChatMessage): boolean {
+  if (m.role !== "user" || !Array.isArray(m.content) || m.content.length === 0) { return false }
+  let first = m.content[0]
+  return first.type === "text" && typeof first.text === "string" && first.text.startsWith(RENDER_TURN_PREFIX)
+}
+
+fn countImages(parts: ChatContentPart[]): number {
+  return parts.filter(fn(p) { return p.type === "image_url" }).length
+}
+
+fn textOf(parts: ChatContentPart[]): string {
+  return parts.filter(fn(p) { return p.type === "text" && typeof p.text === "string" && p.text !== "" })
+    .map(fn(p) { return p.text })
+    .join(" ")
+}
+
+fn imagesLabel(n: number): string {
+  return n === 1 ? "image" : String(n) + " images"
+}
+
+// Keep the pixels of the latest `keep` rendered-view turns; earlier ones become a note. Images a user sent stay.
+export fn pruneOldImages(messages: ChatMessage[], keep: number?): void {
+  let limit = typeof keep === "number" ? keep : KEEP_IMAGE_TURNS
+  let seen = 0
+  let i = messages.length - 1
+  while (i >= 0) {
+    let m = messages[i]
+    if (isRenderTurn(m) && countImages(m.content) > 0) {
+      seen = seen + 1
+      if (seen > limit) {
+        let note = textOf(m.content) + " [" + imagesLabel(countImages(m.content)) + " omitted: superseded by a later view.]"
+        messages[i] = { ...m, content: note.trim() }
+      }
+    }
+    i = i - 1
+  }
+}
+
+// Drop rendered views, oldest first, until the transcript fits `budget` characters.
+export fn fitImagesToBudget(messages: ChatMessage[], budget: number): void {
+  if (sizeOf(messages) <= budget) { return }
+  let i = 0
+  while (i < messages.length && sizeOf(messages) > budget) {
+    let m = messages[i]
+    if (isRenderTurn(m)) {
+      let parts = m.content.slice()
+      let dropped = 0
+      let j = parts.length - 1
+      while (j >= 0 && sizeOf(messages) > budget) {
+        if (parts[j].type === "image_url") {
+          parts.splice(j, 1)
+          dropped = dropped + 1
+          messages[i] = { ...m, content: parts.slice() }
+        }
+        j = j - 1
+      }
+      if (dropped > 0) {
+        let label = dropped === 1 ? "1 image" : String(dropped) + " images"
+        let note = textOf(parts) + " [" + label + " omitted to keep the request under the size limit.]"
+        messages[i] = { ...m, content: note.trim() }
+      }
+    }
+    i = i + 1
+  }
+}
+
+export type CompactOptions = {
+  // Compact when the transcript is longer than this many characters.
+  maxChars: number,
+  // Turns kept verbatim at the end. Default 12 messages.
+  keepRecent: number?,
+  // Summarises the dropped middle (a model call). Absent: the middle is dropped with a note.
+  summarize: ((ChatMessage[]) => Promise<string>)?
+}
+
+// Index where the kept tail can start without separating a tool call from its results.
+fn safeTailStart(messages: ChatMessage[], want: number): number {
+  let i = Math.max(1, messages.length - want)
+  while (i < messages.length && messages[i].role === "tool") { i = i + 1 }
+  return i
+}
+
+// Compact a long transcript in place: system + first request + summary + recent turns. Returns whether it did.
+export async fn compactTranscript(messages: ChatMessage[], opts: CompactOptions): boolean {
+  if (sizeOf(messages) <= opts.maxChars) { return false }
+  let head = messages.length > 0 && messages[0].role === "system" ? 1 : 0
+  let firstUser = -1
+  let k = head
+  while (k < messages.length && firstUser < 0) {
+    if (messages[k].role === "user") { firstUser = k }
+    k = k + 1
+  }
+  let keepFrom = firstUser >= 0 ? firstUser + 1 : head
+  let tail = safeTailStart(messages, typeof opts.keepRecent === "number" ? opts.keepRecent : 12)
+  if (tail <= keepFrom) { return false }
+  let dropped = messages.slice(keepFrom, tail)
+  let summary = ""
+  if (typeof opts.summarize === "function") {
+    try {
+      summary = await opts.summarize(dropped)
+    } catch (e) {
+      summary = ""
+    }
+  }
+  let content = summary !== ""
+    ? "Summary of the earlier work in this session (the details were compacted to save space):\n" + summary
+    : "[" + String(dropped.length) + " earlier messages were compacted to save space. Look again at anything you need from them.]"
+  messages.splice(keepFrom, dropped.length, { role: "user", content: content })
+  return true
+}
+
+fn plainText(m: ChatMessage): string {
+  return typeof m.content === "string" ? m.content : textOf(m.content)
+}
+
+// A `summarize` for compactTranscript built on the host's model call.
+export fn modelSummarizer(callModel: CallModel): any {
+  return async fn(dropped: ChatMessage[]): string {
+    let lines = dropped.map(fn(m) {
+      let who = typeof m.name === "string" && m.name !== "" ? m.role + " (" + m.name + ")" : m.role
+      return who + ": " + plainText(m)
+    })
+    let text = lines.join("\n").slice(0, 60000)
+    let out = await callModel([
+      { role: "system", content: "Summarise this agent work log for the agent itself to continue from: what was asked, what was done (with ids and names), what was found, what is left. Be specific and brief." },
+      { role: "user", content: text }
+    ], [], {})
+    return out.text.trim()
+  }
+}

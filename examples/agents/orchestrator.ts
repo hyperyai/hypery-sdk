@@ -2,13 +2,13 @@
 //   bun examples/agents/orchestrator.ts
 
 import {
-  AgentRuntime, BUILTIN_PROFILES, ORCHESTRATOR_GUIDANCE, TodoList, TODO_TOOL, execOrchestrationTool, isOrchestrationTool,
+  createAgentRuntime, createTodoList, BUILTIN_PROFILES, ORCHESTRATOR_GUIDANCE, TODO_TOOL, execOrchestrationTool, isOrchestrationTool,
   orchestrationTools, runAgentLoop, todoTool, type CallModel, type ChatMessage,
 } from '../../src/agents'
 import { doc, docTools, log, model, online, runDocTool } from './setup'
 
 const profiles = BUILTIN_PROFILES
-const runtime = new AgentRuntime({
+const runtime = createAgentRuntime({
   callModel: model,
   profiles: () => profiles,
   // Children get the document tools; read-only types only the reading one.
@@ -21,7 +21,7 @@ const runtime = new AgentRuntime({
     if (e.type === 'report') log(`  [${e.sessionId}] ${e.question ? 'asks' : 'reports'}: ${e.message}`)
   },
 })
-const todos = new TodoList([], t => log(`  plan: ${t.map(x => `${x.status === 'done' ? '✓' : '·'} ${x.text}`).join('  ')}`))
+const todos = createTodoList([], t => log(`  plan: ${t.map(x => `${x.status === 'done' ? '✓' : '·'} ${x.text}`).join('  ')}`))
 
 // Offline, the main agent follows a fixed script: plan, explore and build in parallel, wait for the builder's
 // notification, mark the plan done, answer. With HYPERY_TOKEN set, the real model decides.

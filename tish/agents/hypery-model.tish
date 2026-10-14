@@ -1,0 +1,280 @@
+// The model call for Hypery's gateway (`POST /api/v1/chat/completions`, OpenAI-style SSE), so no app writes its own
+// streaming client. Ported from PopCraft's lib/agent/gateway.ts and stream-parse.ts.
+//
+// - Streams text, reasoning and tool-call deltas to the loop's hooks.
+// - An idle watchdog ends a stream that stops sending (180 s, as dune and PopCraft use): each read races a `delay`.
+// - Errors are plain values `{ name: "AgentModelError", message, code, status }` with a message safe to show and a
+//   stable `code` (ai_reauth, ai_credits, ai_scope, ai_rate_limited, ai_timeout, too_large, network, ai_upstream) —
+//   `status` is what the loop's retry reads.
+// - The host supplies `fetch` (the platform's: a browser's, Node's, Tish's `http`), the token, the billed team and the
+//   payment source (`x-hypery-payment-source: credits` in App Store builds), so the same call works in a browser, an
+//   iPad shell, Node or Dune.
+
+import { delay } from "tish:timers"
+import { utf8Complete, utf8Decode } from "tish:encoding"
+import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, ModelTurn, StopSignal } from "./types.tish"
+
+// Hypery's host refuses request bodies over 4.5 MB (before Hypery runs, without CORS headers).
+export const MAX_REQUEST_BYTES = 4400000
+export const DEFAULT_IDLE_TIMEOUT_MS = 180000
+export const HYPERY_TEAM_HEADER = "x-hypery-active-organization-id"
+export const HYPERY_PAYMENT_SOURCE_HEADER = "x-hypery-payment-source"
+
+export type AgentModelError = { name: "AgentModelError", message: string, code: string, status: number }
+
+export fn agentModelError(message: string, code: string?, status: number?): AgentModelError {
+  return { name: "AgentModelError", message: message, code: code ?? "ai_upstream", status: typeof status === "number" ? status : 502 }
+}
+
+export fn isAgentModelError(err: any): boolean {
+  return err !== null && typeof err === "object" && err.name === "AgentModelError" && typeof err.code === "string"
+}
+
+export type HyperyModelOptions = {
+  // The platform's fetch: a browser's or Node's, or Tish's `http` fetch natively.
+  fetch: any,
+  // The user's Hypery access token (OAuth bearer), or a function returning it (awaited).
+  token: any,
+  // Model id, e.g. "anthropic/claude-sonnet-4.5", or a function returning it.
+  model: any,
+  // Default "https://hypery.ai".
+  gatewayUrl: string?,
+  // The Hypery team to bill (absent = the personal team), or a function returning it.
+  team: any?,
+  // "credits": pay from credits only (App Store builds); absent = the team's usual billing. Or a function.
+  paymentSource: any?,
+  maxTokens: number?,
+  temperature: number?,
+  idleTimeoutMs: number?,
+  maxRequestBytes: number?
+}
+
+async fn resolve(v: any): any {
+  if (typeof v === "function") { return await v() }
+  return v ?? null
+}
+
+fn errorCodeFor(status: number, payload: any): string {
+  if (payload !== null && typeof payload === "object" && payload.error !== null && typeof payload.error === "object" && typeof payload.error.code === "string") {
+    return payload.error.code
+  }
+  if (status === 401) { return "ai_reauth" }
+  if (status === 402) { return "ai_credits" }
+  if (status === 403) { return "ai_scope" }
+  if (status === 429) { return "ai_rate_limited" }
+  return "ai_upstream"
+}
+
+// Message text of an `{ error }` frame or an error body, safe to show.
+export fn streamErrorMessage(payload: any, fallback: string?): string {
+  let otherwise = fallback ?? "The AI request failed."
+  if (payload === null || typeof payload !== "object") { return otherwise }
+  let err = payload.error ?? null
+  if (typeof err === "string" && err.trim() !== "") { return err }
+  let message = err !== null && typeof err === "object" ? err.message ?? null : null
+  if (message === null) { message = payload.message ?? null }
+  return typeof message === "string" && message.trim() !== "" ? message : otherwise
+}
+
+export type StreamEvent = { textDelta: string?, reasoningDelta: string?, toolProgress: any? }
+
+export type StreamAccumulator = {
+  // Feed any slice of the stream's text; get the deltas it holds. Throws an AgentModelError for an `{ error }` frame.
+  push: (string) => StreamEvent[],
+  result: () => { text: string, reasoning: string, sawDone: boolean, toolCalls: { id: string, name: string, arguments: string }[] }
+}
+
+// Incremental parser for OpenAI-style chat SSE.
+export fn createStreamAccumulator(): StreamAccumulator {
+  let buffer = ""
+  let text = ""
+  let reasoning = ""
+  let sawDone = false
+  // Tool calls by their index in the stream, in the order they first appeared.
+  let calls = new Map()
+  let order = []
+  return {
+    push: fn(part: string): StreamEvent[] {
+      buffer = buffer + part
+      let out = []
+      let nl = buffer.indexOf("\n")
+      while (nl >= 0) {
+        let line = buffer.slice(0, nl).trim()
+        buffer = buffer.slice(nl + 1)
+        nl = buffer.indexOf("\n")
+        if (!line.startsWith("data:")) { continue }
+        let data = line.slice(5).trim()
+        if (data === "") { continue }
+        if (data === "[DONE]") {
+          sawDone = true
+          continue
+        }
+        let chunk = null
+        try { chunk = JSON.parse(data) } catch (e) { continue }
+        if (chunk === null || typeof chunk !== "object") { continue }
+        if (chunk.error) {
+          let code = typeof chunk.error === "object" && typeof chunk.error.code === "string" ? chunk.error.code : "ai_upstream"
+          throw agentModelError(streamErrorMessage(chunk, null), code, 502)
+        }
+        let choice = Array.isArray(chunk.choices) && chunk.choices.length > 0 ? chunk.choices[0] : null
+        let delta = choice !== null ? choice.delta ?? null : null
+        if (delta === null) { continue }
+        if (typeof delta.content === "string" && delta.content !== "") {
+          text = text + delta.content
+          out.push({ textDelta: delta.content })
+        }
+        let r = typeof delta.reasoning === "string" ? delta.reasoning : (typeof delta.reasoning_content === "string" ? delta.reasoning_content : "")
+        if (r !== "") {
+          reasoning = reasoning + r
+          out.push({ reasoningDelta: r })
+        }
+        for (let tc of (Array.isArray(delta.tool_calls) ? delta.tool_calls : [])) {
+          // Providers may omit `index` on the first fragment; keep appending to the call in flight.
+          let i = typeof tc.index === "number" ? tc.index : (order.length > 0 ? order[order.length - 1] : 0)
+          if (!calls.has(i)) {
+            calls.set(i, { id: null, name: "", arguments: "" })
+            order.push(i)
+          }
+          let call = calls.get(i)
+          if (typeof tc.id === "string" && tc.id !== "") { call.id = tc.id }
+          let f = tc["function"] ?? null
+          if (f !== null && typeof f.name === "string") { call.name = call.name + f.name }
+          if (f !== null && typeof f.arguments === "string" && f.arguments !== "") {
+            call.arguments = call.arguments + f.arguments
+            out.push({ toolProgress: { index: i, name: call.name, bytes: call.arguments.length, arguments: call.arguments } })
+          }
+        }
+      }
+      return out
+    },
+    result: fn(): any {
+      let toolCalls = []
+      let n = 0
+      for (let i of order) {
+        let c = calls.get(i)
+        if (c.name !== "") { toolCalls.push({ id: c.id ?? "call_" + String(n), name: c.name, arguments: c.arguments }) }
+        n = n + 1
+      }
+      return { text: text, reasoning: reasoning, sawDone: sawDone, toolCalls: toolCalls }
+    }
+  }
+}
+
+// Bytes from a stream read — an array of numbers natively, a Uint8Array in JS — as a Tish byte array after `pending`.
+fn appendBytes(pending: number[], chunk: any): number[] {
+  let out = pending.slice()
+  let i = 0
+  while (i < chunk.length) {
+    out.push(chunk[i])
+    i = i + 1
+  }
+  return out
+}
+
+fn callHook(hooks: ModelHooks?, name: string, value: any): void {
+  if (hooks === null || typeof hooks !== "object") { return }
+  let h = hooks[name]
+  if (typeof h === "function") { h(value) }
+}
+
+export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
+  let idleMs = typeof opts.idleTimeoutMs === "number" ? opts.idleTimeoutMs : DEFAULT_IDLE_TIMEOUT_MS
+  let limit = typeof opts.maxRequestBytes === "number" ? opts.maxRequestBytes : MAX_REQUEST_BYTES
+  let base = typeof opts.gatewayUrl === "string" && opts.gatewayUrl !== "" ? opts.gatewayUrl : "https://hypery.ai"
+  if (base.endsWith("/")) { base = base.slice(0, base.length - 1) }
+  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?): ModelTurn {
+    let token = await resolve(opts.token)
+    if (typeof token !== "string" || token === "") { throw agentModelError("Sign in to Hypery to use the agent.", "ai_reauth", 401) }
+    let model = await resolve(opts.model)
+    let team = await resolve(opts.team)
+    let paymentSource = await resolve(opts.paymentSource)
+    let hasTools = Array.isArray(tools) && tools.length > 0
+    let request = {
+      model: model,
+      messages: messages,
+      stream: true,
+      max_tokens: typeof opts.maxTokens === "number" ? opts.maxTokens : (hasTools ? 16384 : 4096)
+    }
+    if (typeof opts.temperature === "number") { request.temperature = opts.temperature }
+    if (hasTools) {
+      request.tools = tools
+      request.tool_choice = "auto"
+    }
+    let body = JSON.stringify(request)
+    if (body.length > limit) {
+      throw agentModelError("This message is too large to send (" + (body.length / 1000000).toFixed(1) + " MB with its images). Send fewer or smaller images.", "too_large", 413)
+    }
+    let headers = {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream"
+    }
+    if (typeof team === "string" && team !== "") { headers[HYPERY_TEAM_HEADER] = team }
+    if (typeof paymentSource === "string" && paymentSource !== "") { headers[HYPERY_PAYMENT_SOURCE_HEADER] = paymentSource }
+    let init = { method: "POST", headers: headers, body: body }
+    // A platform signal (a JS AbortSignal) also cancels the request itself; a plain stop flag (`{ aborted }`, what
+    // the runtime gives each child) is checked between chunks below, on every target.
+    if (signal !== null && typeof signal.addEventListener === "function") { init.signal = signal }
+
+    let res = null
+    try {
+      res = await opts.fetch(base + "/api/v1/chat/completions", init)
+    } catch (err) {
+      if (err !== null && typeof err === "object" && err.name === "AbortError") { throw err }
+      throw agentModelError("Could not reach Hypery. Check your connection.", "network", 0)
+    }
+    if (res.ok !== true || res.body === null) {
+      let text = ""
+      try { text = await res.text() } catch (e) { text = "" }
+      let payload = text
+      try { payload = JSON.parse(text) } catch (e) { payload = text }
+      throw agentModelError(streamErrorMessage(payload, "The AI request failed (" + String(res.status) + ")."), errorCodeFor(res.status, payload), res.status)
+    }
+
+    let acc = createStreamAccumulator()
+    let reader = res.body.getReader()
+    let pending = []
+    let stopReading = fn(): void {
+      if (typeof reader.cancel === "function") {
+        try { reader.cancel() } catch (e) { /* already closed */ }
+      }
+    }
+    while (true) {
+      if (signal !== null && signal.aborted === true) {
+        stopReading()
+        throw { name: "AbortError", message: "The request was stopped." }
+      }
+      // The idle watchdog: a read that has not arrived after `idleMs` loses to the delay.
+      let next = await Promise.race([reader.read(), delay(idleMs)])
+      if (next === null) {
+        stopReading()
+        throw agentModelError("The model stopped responding.", "ai_timeout", 504)
+      }
+      if (next.done === true) { break }
+      if (next.value === null) { continue }
+      let bytes = appendBytes(pending, next.value)
+      // A chunk can end inside a character: decode the whole characters, carry the rest.
+      let whole = utf8Complete(bytes)
+      pending = bytes.slice(whole)
+      let events = []
+      try {
+        events = acc.push(utf8Decode(bytes.slice(0, whole)))
+      } catch (err) {
+        stopReading()
+        throw err
+      }
+      for (let e of events) {
+        if (typeof e.textDelta === "string") { callHook(hooks, "onTextDelta", e.textDelta) }
+        if (typeof e.reasoningDelta === "string") { callHook(hooks, "onReasoningDelta", e.reasoningDelta) }
+        if (e.toolProgress !== null) { callHook(hooks, "onToolProgress", e.toolProgress) }
+      }
+    }
+    if (pending.length > 0) { acc.push(utf8Decode(pending)) }
+    acc.push("\n")
+    let r = acc.result()
+    if (!r.sawDone && r.text === "" && r.toolCalls.length === 0) {
+      throw agentModelError("The response was cut off before it started. Try again.", "ai_upstream", 502)
+    }
+    return { text: r.text, reasoning: r.reasoning, toolCalls: r.toolCalls }
+  }
+}

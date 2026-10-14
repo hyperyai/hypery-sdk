@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { runAgentLoop, type LoopTool } from '../loop.js'
-import { AgentRuntime, REPORT_TOOL, type AgentHost, type AgentSession } from '../runtime.js'
-import { execOrchestrationTool, orchestrationTools } from '../orchestration.js'
-import { BUILTIN_PROFILES } from '../profiles.js'
-import type { CallModel, ChatMessage, ModelTurn } from '../types.js'
+import { BUILTIN_PROFILES, REPORT_TOOL, createAgentRuntime, execOrchestrationTool, orchestrationTools, runAgentLoop, type AgentHost, type AgentRuntime, type AgentSession, type CallModel, type ChatMessage, type LoopTool, type ModelTurn } from '../index.js'
 
 const tool = (name: string, readOnly: boolean): LoopTool => ({ readOnly, spec: { type: 'function', function: { name, description: name, parameters: { type: 'object', properties: {} } } } })
 const turn = (text: string, calls: [string, object?][] = []): ModelTurn => ({ text, toolCalls: calls.map(([name, args], i) => ({ id: `${name}-${i}-${Math.random()}`, name, arguments: JSON.stringify(args ?? {}) })) })
@@ -70,7 +66,7 @@ function host(turnsFor: (prompt: string) => ModelTurn[], store?: Map<string, Age
 
 describe('AgentRuntime', () => {
   it('runs a foreground agent and keeps it resumable with its context', async () => {
-    const rt = new AgentRuntime(host(() => [turn('', [['edit']]), turn('built it')]))
+    const rt = createAgentRuntime(host(() => [turn('', [['edit']]), turn('built it')]))
     const r = await rt.spawn({ profileId: 'builder', prompt: 'build a card' })
     expect(r).toMatchObject({ kind: 'done', ok: true, summary: 'built it' })
     const id = (r as { id: string }).id
@@ -92,7 +88,7 @@ describe('AgentRuntime', () => {
       if (n++ === 0) { await gate; return turn('', [['read']]) }
       return turn('finished with the message')
     }
-    const rt = new AgentRuntime(h)
+    const rt = createAgentRuntime(h)
     const r = await rt.spawn({ profileId: 'explorer', prompt: 'look around', background: true })
     expect(r.kind).toBe('started')
     const id = (r as { id: string }).id
@@ -110,9 +106,13 @@ describe('AgentRuntime', () => {
     let calls = 0
     h.callModel = async (_m, _t, _h, signal) => {
       if (calls++ === 0) return turn('', [[REPORT_TOOL, { message: 'Halfway there' }]])
-      return new Promise<ModelTurn>((res, rej) => { resolveTurn = res; signal?.addEventListener('abort', () => rej(new Error('aborted'))) })
+      // The runtime's stop flag: a model call checks `aborted` while it streams.
+      return new Promise<ModelTurn>((res, rej) => {
+        resolveTurn = res
+        const check = setInterval(() => { if (signal?.aborted) { clearInterval(check); rej(new Error('aborted')) } }, 1)
+      })
     }
-    const rt = new AgentRuntime(h)
+    const rt = createAgentRuntime(h)
     const r = await rt.spawn({ profileId: 'builder', prompt: 'long job', background: true })
     const id = (r as { id: string }).id
     while (!rt.hasPendingNotifications()) await new Promise(res => setTimeout(res, 1))
@@ -124,12 +124,12 @@ describe('AgentRuntime', () => {
 
   it('keeps sessions in the store and marks a run cut off by a reload as stopped', async () => {
     const store = new Map<string, AgentSession>()
-    const rt = new AgentRuntime(host(() => [turn('first answer')], store))
+    const rt = createAgentRuntime(host(() => [turn('first answer')], store))
     const r = await rt.spawn({ profileId: 'planner', prompt: 'plan it' })
     await new Promise(res => setTimeout(res, 1))
     const id = (r as { id: string }).id
     store.set('cut', { ...store.get(id)!, id: 'cut', status: 'running' })
-    const reloaded = new AgentRuntime(host(() => [turn('continued')], store))
+    const reloaded = createAgentRuntime(host(() => [turn('continued')], store))
     await reloaded.load()
     expect(reloaded.get(id)!.summary).toBe('first answer')
     expect(reloaded.get('cut')!.status).toBe('stopped')
@@ -138,7 +138,7 @@ describe('AgentRuntime', () => {
   })
 
   it('refuses an unknown agent type and an empty prompt', async () => {
-    const rt = new AgentRuntime(host(() => []))
+    const rt = createAgentRuntime(host(() => []))
     expect((await rt.spawn({ profileId: 'nope', prompt: 'x' })).kind).toBe('refused')
     expect((await rt.spawn({ profileId: 'builder', prompt: '  ' })).kind).toBe('refused')
   })
@@ -146,7 +146,7 @@ describe('AgentRuntime', () => {
 
 describe('orchestration tools', () => {
   it('exposes the parent tools and runs task / list_agents / await_agent / stop_agent / send_message', async () => {
-    const rt = new AgentRuntime(host(() => [turn('reviewed: PASS')]))
+    const rt = createAgentRuntime(host(() => [turn('reviewed: PASS')]))
     const specs = orchestrationTools(rt, BUILTIN_PROFILES).map(t => t.spec.function.name)
     expect(specs).toEqual(['task', 'send_message', 'stop_agent', 'list_agents', 'await_agent'])
     const call = (name: string, args: object) => execOrchestrationTool(rt, { id: name, name, argsText: JSON.stringify(args) })
@@ -167,7 +167,7 @@ describe('delegation', () => {
     const h = host(() => [turn('found it')])
     const model = h.callModel
     h.callModel = async (...a) => { await gate; return model(...a) }
-    const rt = new AgentRuntime(h)
+    const rt = createAgentRuntime(h)
     const call = (name: string, args: object) => execOrchestrationTool(rt, { id: name, name, argsText: JSON.stringify(args) })
     const t = JSON.parse((await call('task', { subagent_type: 'explorer', prompt: 'look', run_in_background: true })).content)
     const waited = call('await_agent', { agent_id: t.agent_id })
@@ -181,7 +181,7 @@ describe('delegation', () => {
   it('times out with the status when the agent is still running', async () => {
     const h = host(() => [])
     h.callModel = () => new Promise(() => {})
-    const rt = new AgentRuntime(h)
+    const rt = createAgentRuntime(h)
     const call = (name: string, args: object) => execOrchestrationTool(rt, { id: name, name, argsText: JSON.stringify(args) })
     const t = JSON.parse((await call('task', { subagent_type: 'builder', prompt: 'work', run_in_background: true })).content)
     const r = JSON.parse((await call('await_agent', { agent_id: t.agent_id, timeout_seconds: 1 })).content)
@@ -190,7 +190,7 @@ describe('delegation', () => {
   })
 
   it('handing work to a builder counts as acting, so requireAction does not nudge the parent to redo it', async () => {
-    const rt = new AgentRuntime(host(() => [turn('', [['edit']]), turn('built it')]))
+    const rt = createAgentRuntime(host(() => [turn('', [['edit']]), turn('built it')]))
     const parent = scripted([turn('', [['task', { subagent_type: 'builder', prompt: 'make it red' }]]), turn('The builder made it red.')])
     const seen: string[] = []
     const out = await runAgentLoop({
@@ -206,7 +206,7 @@ describe('delegation', () => {
   })
 
   it('handing work to a read-only explorer does not count as acting', async () => {
-    const rt = new AgentRuntime(host(() => [turn('it is blue')]))
+    const rt = createAgentRuntime(host(() => [turn('it is blue')]))
     const parent = scripted([turn('', [['task', { subagent_type: 'explorer', prompt: 'what colour' }]]), turn('It is blue.'), turn('', [['edit']]), turn('Made it red.')])
     const out = await runAgentLoop({
       callModel: parent,
@@ -226,11 +226,39 @@ describe('host choices per child', () => {
     const used: string[] = []
     const fast: CallModel = async () => { used.push('fast'); return turn('surveyed on the fast model') }
     h.childModel = ctx => (ctx.profile.model === 'fast' ? fast : undefined)
-    const rt = new AgentRuntime(h)
+    const rt = createAgentRuntime(h)
     const survey = JSON.parse((await execOrchestrationTool(rt, { id: 'call-1', name: 'task', argsText: JSON.stringify({ subagent_type: 'explorer', prompt: 'survey' }) })).content)
     expect(survey.answer).toBe('surveyed on the fast model')
     expect(rt.get(survey.agent_id)?.parentCallId).toBe('call-1')
     await execOrchestrationTool(rt, { id: 'call-2', name: 'task', argsText: JSON.stringify({ subagent_type: 'builder', prompt: 'build' }) })
     expect(used).toEqual(['fast'])
+  })
+})
+
+describe('stop signals in a JS host', () => {
+  it("gives each child a real AbortSignal, aborted when the child is stopped", async () => {
+    const h = host(() => [])
+    let seen: unknown = null
+    let aborted = false
+    h.execChildTool = async (c, ctx) => {
+      seen = ctx.signal
+      ;(ctx.signal as AbortSignal).addEventListener('abort', () => { aborted = true })
+      return { ...c, ok: true, summary: 'ok', content: '{}' }
+    }
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h.callModel = async (_m, _t, _h, signal) => {
+      if (!seen) return turn('', [['read']])
+      await gate
+      if (signal?.aborted) throw new Error('aborted')
+      return turn('done')
+    }
+    const rt = createAgentRuntime(h)
+    const r = await rt.spawn({ profileId: 'explorer', prompt: 'look', background: true })
+    while (!seen) await new Promise(res => setTimeout(res, 1))
+    expect(seen).toBeInstanceOf(AbortSignal)
+    expect(rt.stop((r as { id: string }).id)).toBe(true)
+    expect(aborted).toBe(true)
+    release()
   })
 })

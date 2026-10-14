@@ -34,6 +34,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Agent core agrees on Tish's VM and as the shipped JavaScript
+        run: npm run test:tish
+
       - name: Build
         run: npm run build
 

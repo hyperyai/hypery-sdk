@@ -1,0 +1,104 @@
+// A main-agent run that survives reloads, crashes and sleeping devices: every round is checkpointed to a run store,
+// and a run that was cut off is continued from its last checkpoint (`resumeRun`). The foundation for server-side
+// runs too — any process holding the store can continue one.
+
+import { runAgentLoop, LoopOptions, LoopOutcome, LoopCheckpoint } from "./loop.tish"
+import { AgentRunRecord, RunStore } from "./store.tish"
+import { TodoList } from "./todos.tish"
+
+// The loop's options, plus where and as what the run is kept.
+export type PersistentRunOptions = LoopOptions & {
+  // The run's id (the host's conversation or turn id).
+  id: string,
+  runs: RunStore,
+  // Its plan, saved with each checkpoint.
+  todos: TodoList?,
+  meta: any?,
+  now: (() => number)?
+}
+
+fn errorMessage(err: any): string {
+  if (err !== null && typeof err === "object" && typeof err.message === "string") { return err.message }
+  return String(err)
+}
+
+// Run (or continue) a loop, checkpointing every round.
+export async fn runPersistent(opts: PersistentRunOptions): LoopOutcome {
+  let now = typeof opts.now === "function" ? opts.now : fn(): number { return Date.now() }
+  let existing = await opts.runs.get(opts.id)
+  let createdAt = existing !== null ? existing.createdAt : now()
+  let record = fn(status: string, checkpoint: LoopCheckpoint): AgentRunRecord {
+    let todos = opts.todos !== null && typeof opts.todos === "object" ? opts.todos.get() : (existing !== null ? existing.todos ?? null : null)
+    let meta = opts.meta ?? (existing !== null ? existing.meta ?? null : null)
+    return { id: opts.id, createdAt: createdAt, updatedAt: now(), meta: meta, todos: todos, status: status, checkpoint: checkpoint }
+  }
+  let first = existing !== null ? existing.checkpoint : { messages: opts.messages, round: 0, acted: false, nudgesLeft: 0, done: false }
+  await opts.runs.save(record("running", first))
+  let mark = async fn(status: string, error: string?): void {
+    let saved = await opts.runs.get(opts.id)
+    if (saved !== null) {
+      let next = { ...saved, status: status, updatedAt: now() }
+      if (typeof error === "string") { next.error = error }
+      await opts.runs.save(next)
+    }
+  }
+  let outcome = null
+  try {
+    outcome = await runAgentLoop({
+      ...opts,
+      checkpoint: async fn(state: LoopCheckpoint): void {
+        await opts.runs.save(record(state.done ? "done" : "running", state))
+        if (typeof opts.checkpoint === "function") { await opts.checkpoint(state) }
+      }
+    })
+  } catch (err) {
+    await mark("error", errorMessage(err))
+    throw err
+  }
+  if (outcome.stopped) { await mark("stopped", null) }
+  return outcome
+}
+
+// Runs left "running" by a process that is gone: what to offer to continue after a reload.
+export async fn interruptedRuns(runs: RunStore, activeIds: string[]?): AgentRunRecord[] {
+  let active = new Set(activeIds ?? [])
+  return (await runs.list()).filter(fn(r) { return r.status === "running" && !active.has(r.id) })
+}
+
+// What `resumeRun` needs that cannot be saved: the model call, the tools and how to run them.
+export type ResumeOptions = {
+  tools: any[],
+  callModel: any,
+  execTool: any,
+  hooks: any?,
+  signal: any?,
+  stopped: (() => boolean)?,
+  drainNotifications: (() => string[])?,
+  maxRounds: number?,
+  maxParallel: number?,
+  maxResultChars: number?,
+  requireAction: any?,
+  modelRetries: number?,
+  isRecoverable: ((any) => boolean)?,
+  context: any?,
+  checkpoint: ((LoopCheckpoint) => any)?,
+  todos: TodoList?,
+  meta: any?,
+  now: (() => number)?
+}
+
+// Continue a run from its last checkpoint. Messages and loop state come from the store, and calls the interruption
+// cut off are answered as interrupted so the model can check and redo them.
+export async fn resumeRun(id: string, runs: RunStore, options: ResumeOptions): LoopOutcome {
+  let saved = await runs.get(id)
+  if (saved === null) { throw { message: "No saved run \"" + id + "\".", code: "not_found" } }
+  let cp = saved.checkpoint
+  return await runPersistent({
+    ...options,
+    id: id,
+    runs: runs,
+    messages: cp.messages.concat([{ role: "user", content: "The session was interrupted and has resumed. Check the state of your work, then carry on where you left off." }]),
+    resumeState: { round: cp.round, acted: cp.acted, nudgesLeft: cp.nudgesLeft },
+    meta: options.meta ?? saved.meta ?? null
+  })
+}

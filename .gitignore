@@ -7,3 +7,6 @@ dist/
 .DS_Store
 coverage/
 .agents-example/
+
+# The agent core compiled from tish/agents (npm run build:core)
+src/agents/core/
