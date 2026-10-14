@@ -262,3 +262,20 @@ describe('stop signals in a JS host', () => {
     release()
   })
 })
+
+describe("the parent's stop", () => {
+  it('stops a child in the middle of its model call when the parent signal aborts', async () => {
+    const h = host(() => [])
+    h.callModel = (_m, _t, _h, signal) => new Promise((_res, rej) => {
+      (signal as AbortSignal).addEventListener('abort', () => rej(new Error('aborted')))
+    })
+    const rt = createAgentRuntime(h)
+    const turn = new AbortController()
+    const r = await rt.spawn({ profileId: 'explorer', prompt: 'look', background: true, signal: turn.signal })
+    const id = (r as { id: string }).id
+    await new Promise(res => setTimeout(res, 5))
+    turn.abort()
+    const s = await rt.wait(id, { timeoutMs: 1000 })
+    expect(s?.status).not.toBe('running')
+  })
+})
