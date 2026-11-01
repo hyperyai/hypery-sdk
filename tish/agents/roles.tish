@@ -1,0 +1,80 @@
+// Model roles: the jobs a run hands to different models. The lead does the work (edits, tests); the swarm runs cheap
+// read-only surveys (search, grep, audits); the advisor is a strong model consulted at key moments that never edits;
+// the router makes quick next-step picks. One model call serves every role: each request carries the role's model
+// and effort (`ModelRequest.model` / `.effort`), which `createHyperyModel` sends to the gateway.
+
+import { CallModel, ChatMessage, ChatToolSpec, Effort, ModelHooks, ModelRequest, StopSignal } from "./types.tish"
+
+export type ModelRole = "lead" | "swarm" | "advisor" | "router"
+
+export type RoleSpec = {
+  // Model id, e.g. "anthropic/claude-sonnet-5.5".
+  model: string,
+  effort: Effort?,
+  // Tried in order when `model` is not in the catalog.
+  fallback: string[]?
+}
+
+export type RolePolicy = { lead: RoleSpec, swarm: RoleSpec, advisor: RoleSpec, router: RoleSpec }
+
+export const DEFAULT_ROLES: RolePolicy = {
+  lead: { model: "anthropic/claude-sonnet-5.5", effort: "high", fallback: ["anthropic/claude-sonnet-4.5", "openai/gpt-5"] },
+  swarm: { model: "anthropic/claude-haiku-5.5", effort: "low", fallback: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash"] },
+  advisor: { model: "anthropic/claude-opus-5.5", effort: "high", fallback: ["anthropic/claude-opus-4.5", "openai/gpt-5"] },
+  router: { model: "anthropic/claude-haiku-5.5", effort: "none", fallback: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash"] }
+}
+
+export const MODEL_ROLES: string[] = ["lead", "swarm", "advisor", "router"]
+
+export fn isModelRole(v: any): boolean {
+  return typeof v === "string" && MODEL_ROLES.includes(v)
+}
+
+// The role a profile's `model` names: "fast" is the swarm, "inherit" (or nothing) the lead, a role name itself, and
+// a model id none (the profile pinned a model).
+export fn roleOfProfileModel(model: string?): string? {
+  if (model === null || model === undefined || model === "" || model === "inherit") { return "lead" }
+  if (model === "fast") { return "swarm" }
+  if (isModelRole(model)) { return model }
+  return null
+}
+
+// The first of `wanted` and its fallbacks that the catalog has (ids, or objects with `id`). No catalog, or none
+// listed: `wanted` as it is.
+export fn resolveCatalogModel(wanted: string, fallback: string[]?, catalog: any[]?): string {
+  if (!Array.isArray(catalog) || catalog.length === 0) { return wanted }
+  let ids = new Set(catalog.map(fn(m) { return typeof m === "string" ? m : (m !== null && typeof m === "object" ? m.id : "") }))
+  if (ids.has(wanted)) { return wanted }
+  for (let f of (fallback ?? [])) {
+    if (ids.has(f)) { return f }
+  }
+  return wanted
+}
+
+// A role's spec with its model resolved against the catalog.
+export fn resolveRole(role: string, roles: RolePolicy, catalog: any[]?): RoleSpec {
+  let spec = roles[role] ?? roles.lead
+  return { model: resolveCatalogModel(spec.model, spec.fallback ?? null, catalog), effort: spec.effort ?? null, fallback: spec.fallback ?? null }
+}
+
+// `roles` with `overrides` laid over it, role by role (an override may be a model id, or give only `model` or only
+// `effort`).
+export fn mergeRoles(roles: RolePolicy, overrides: any?): RolePolicy {
+  if (overrides === null || overrides === undefined || typeof overrides !== "object") { return roles }
+  let out = { ...roles }
+  for (let r of MODEL_ROLES) {
+    let o = overrides[r] ?? null
+    if (o === null) { continue }
+    out[r] = typeof o === "string" ? { ...roles[r], model: o } : { ...roles[r], ...o }
+  }
+  return out
+}
+
+// The model call for one role: every request carries the spec's model and effort (a request's own win).
+export fn roleModel(callModel: CallModel, spec: RoleSpec): CallModel {
+  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest?): any {
+    let r = req !== null && req !== undefined && typeof req === "object" ? req : {}
+    let merged = { ...r, model: r.model ?? spec.model, effort: r.effort ?? spec.effort ?? null }
+    return await callModel(messages, tools, hooks, signal, merged)
+  }
+}

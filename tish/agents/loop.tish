@@ -12,6 +12,7 @@
 // Stopping is a flag the loop checks between rounds and between tools (`signal.aborted`, or `stopped()`): there is
 // no event to wait for, on any target.
 
+import { REPEATED_ERROR_COUNT, errorSignature } from "./advisor.tish"
 import { compactTranscript, fitImagesToBudget, pruneOldImages, CompactOptions } from "./context.tish"
 import { CallModel, ChatMessage, ChatToolSpec, ModelHooks, StopSignal, ToolCall, ToolChoice, ToolRun } from "./types.tish"
 
@@ -86,7 +87,13 @@ export type LoopOptions = {
   // Make the model call a tool: a `ToolChoice` for every round, or a function of the round number (0 first) returning
   // one, or null for the model's own choice. Every round "required" never ends by itself (it runs to `maxRounds`):
   // force the first round (`fn(r) { return r === 0 ? forceTool("plan") : null }`) or stop with `stopped`.
-  toolChoice: (ToolChoice | ((number) => ToolChoice?))?
+  toolChoice: (ToolChoice | ((number) => ToolChoice?))?,
+  // The advisor (orchestration "ultra"): asked before the first round ("plan"), before the model finishes ("done"),
+  // and when a tool fails with the same error again ("error"). Advice it returns goes to the model as a message.
+  advise: ((any) => Promise<string?>)?,
+  // The router (orchestration "ultra", opt-in): a tool choice for the round, or null for the model's own. A fixed
+  // `toolChoice` for the round wins.
+  route: ((any) => Promise<ToolChoice?>)?
 }
 
 export type LoopOutcome = {
@@ -236,7 +243,22 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     }
   }
 
+  let advise = typeof opts.advise === "function" ? opts.advise : null
+  let route = typeof opts.route === "function" ? opts.route : null
+  let errorCounts = new Map()
+  // The advisor's "done" check runs once per stretch of work: again only after more tools ran.
+  let doneChecked = false
+  let consult = async fn(trigger: string, detail: string?): boolean {
+    if (advise === null) { return false }
+    let note = null
+    try { note = await advise({ trigger: trigger, messages: messages.slice(), detail: detail }) } catch (e) { note = null }
+    if (typeof note !== "string" || note === "") { return false }
+    messages.push({ role: "user", content: note })
+    return true
+  }
+
   let round = typeof resume.round === "number" ? resume.round : 0
+  if (round === 0) { await consult("plan", null) }
   while (maxRounds === 0 || round < maxRounds) {
     if (isStopped()) {
       await save(round, true)
@@ -249,7 +271,11 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     let onStart = hook(hooks, "onAssistantStart")
     if (onStart !== null) { onStart(round) }
 
-    let turn = await call(messages, specs, choiceFor(round))
+    let choice = choiceFor(round)
+    if (choice === null && route !== null && specs.length > 0) {
+      try { choice = await route({ round: round, messages: messages.slice(), tools: specs }) } catch (e) { choice = null }
+    }
+    let turn = await call(messages, specs, choice ?? null)
     text = turn.text
     let toolCalls = Array.isArray(turn.toolCalls) ? turn.toolCalls : []
     if (toolCalls.length > 0) {
@@ -272,6 +298,15 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
         round = round + 1
         continue
       }
+      // The advisor checks the work before it ends; advice means another round.
+      if (!doneChecked) {
+        doneChecked = true
+        if (await consult("done", null)) {
+          await save(round + 1, false)
+          round = round + 1
+          continue
+        }
+      }
       // Asked to change something, changed nothing: act (Cursor / Claude Code keep going until the work is done).
       if (require !== null && !acted && nudgesLeft > 0 && actingNames.size > 0) {
         nudgesLeft = nudgesLeft - 1
@@ -290,6 +325,8 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
     let calls = toolCalls.map(fn(c) { return { id: c.id, name: c.name, argsText: c.arguments } })
     // Every tool_call must be answered before any other message, so render images go out after the round's results.
     let imageTurns = []
+    let repeated = []
+    doneChecked = false
     for (let batch of batchCalls(calls, fn(n) { return parallelNames.has(n) }, maxParallel)) {
       if (isStopped()) {
         // Answer the unanswered calls so the transcript stays valid for a resume.
@@ -317,6 +354,12 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
         let actedHere = typeof run.acted === "boolean" ? run.acted : actingNames.has(run.name)
         if (run.ok === true && actedHere) { acted = true }
         if (onToolEnd !== null) { onToolEnd(run) }
+        if (run.ok !== true && advise !== null) {
+          let sig = errorSignature(run)
+          let n = (errorCounts.get(sig) ?? 0) + 1
+          errorCounts.set(sig, n)
+          if (n === REPEATED_ERROR_COUNT) { repeated.push(run.name + ": " + run.summary) }
+        }
         messages.push({ role: "tool", tool_call_id: run.id, name: run.name, content: truncateResult(run.content, maxResultChars) })
         if (Array.isArray(run.images) && run.images.length > 0) {
           let label = run.images.length === 1 ? "the rendered view" : String(run.images.length) + " rendered views"
@@ -327,6 +370,7 @@ export async fn runAgentLoop(opts: LoopOptions): LoopOutcome {
       }
     }
     for (let m of imageTurns) { messages.push(m) }
+    for (let err of repeated) { await consult("error", "The error, seen " + String(REPEATED_ERROR_COUNT) + " times: " + err) }
     let onRoundEnd = hook(hooks, "onRoundEnd")
     if (onRoundEnd !== null) { onRoundEnd(round) }
     await save(round + 1, false)
