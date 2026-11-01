@@ -45,6 +45,8 @@ export type HyperyModelOptions = {
   paymentSource: any?,
   maxTokens: number?,
   temperature: number?,
+  // Reasoning effort sent as `reasoning: { effort }`; a request's own `effort` wins. Absent = the model's default.
+  effort: any?,
   idleTimeoutMs: number?,
   maxRequestBytes: number?
 }
@@ -185,7 +187,9 @@ export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
   return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest?): ModelTurn {
     let token = await resolve(opts.token)
     if (typeof token !== "string" || token === "") { throw agentModelError("Sign in to Hypery to use the agent.", "ai_reauth", 401) }
-    let model = await resolve(opts.model)
+    let hasReq = req !== null && typeof req === "object"
+    let model = hasReq && typeof req.model === "string" && req.model !== "" ? req.model : await resolve(opts.model)
+    let effort = hasReq && typeof req.effort === "string" ? req.effort : await resolve(opts.effort)
     let team = await resolve(opts.team)
     let paymentSource = await resolve(opts.paymentSource)
     let hasTools = Array.isArray(tools) && tools.length > 0
@@ -196,9 +200,10 @@ export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
       max_tokens: typeof opts.maxTokens === "number" ? opts.maxTokens : (hasTools ? 16384 : 4096)
     }
     if (typeof opts.temperature === "number") { request.temperature = opts.temperature }
+    if (typeof effort === "string" && effort !== "") { request.reasoning = { effort: effort } }
     if (hasTools) {
       request.tools = tools
-      let choice = req !== null && typeof req === "object" ? (req.toolChoice ?? null) : null
+      let choice = hasReq ? (req.toolChoice ?? null) : null
       request.tool_choice = choice !== null ? choice : "auto"
     }
     let body = JSON.stringify(request)

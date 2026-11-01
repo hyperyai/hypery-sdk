@@ -1,0 +1,145 @@
+// The advisor: a strong model the lead consults at key moments — before it plans, before it says it is done, and when
+// the same error comes back. It reads the whole session and answers with short advice; it never edits. Silent on
+// every routine turn. Plugs into `runAgentLoop` as `advise`.
+
+import { CallModel, ChatMessage, ToolRun } from "./types.tish"
+import { RoleSpec, roleModel } from "./roles.tish"
+
+export type AdviseTrigger = "plan" | "done" | "error" | "ask"
+
+export type AdviseRequest = {
+  trigger: AdviseTrigger,
+  messages: ChatMessage[],
+  // The repeated error ("error"), or the lead's question ("ask").
+  detail: string?
+}
+
+// What the loop puts in front of the lead: null = nothing to add (the advisor is happy, or out of budget).
+export type Advise = (AdviseRequest) => Promise<string?>
+
+export type AdvisorTriggers = { plan: boolean?, done: boolean?, error: boolean?, ask: boolean? }
+
+export type AdvisorEvent = {
+  type: "advisor:call" | "advisor:advice",
+  trigger: AdviseTrigger,
+  model: string,
+  calls: number,
+  tokensRead: number,
+  advice: string[]?,
+  verdict: string?
+}
+
+export type AdvisorOptions = {
+  callModel: CallModel,
+  spec: RoleSpec,
+  triggers: AdvisorTriggers?,
+  // Most consultations in one run. Default 8.
+  maxCalls: number?,
+  // Transcript characters it reads per call (the most recent kept). Default 600000.
+  maxChars: number?,
+  onEvent: ((AdvisorEvent) => void)?
+}
+
+export type Advisor = {
+  advise: Advise,
+  stats: () => { calls: number, tokensRead: number }
+}
+
+// Times the same error must come back before the advisor is asked.
+export const REPEATED_ERROR_COUNT = 2
+
+const ADVISOR_PROMPT = [
+  "You are the advisor to a coding agent (the lead). You read its whole session and give it short, specific advice. You never write code or call tools yourself.",
+  "Answer with JSON only: {\"verdict\": \"ok\" | \"revise\", \"advice\": [\"...\"]}. At most 4 advice items, each one sentence, concrete (files, commands, the likely cause).",
+  "Use \"ok\" with no advice when the lead is on track — do not add advice for its own sake."
+].join("\n")
+
+const TRIGGER_ASK = {
+  plan: "The lead is about to plan. Point out anything it should know before choosing an approach.",
+  done: "The lead is about to say it is done. Check the work against the request: anything missing, wrong or unverified?",
+  error: "The lead hit the same error again. Diagnose the likely cause and the next thing to try.",
+  ask: "The lead asked for your advice."
+}
+
+fn contentText(c: any): string {
+  if (typeof c === "string") { return c }
+  if (Array.isArray(c)) { return c.map(fn(p) { return typeof p.text === "string" ? p.text : "[image]" }).join(" ") }
+  return ""
+}
+
+// The session as plain text, the most recent `maxChars` kept.
+export fn renderTranscript(messages: ChatMessage[], maxChars: number): string {
+  let lines = []
+  for (let m of messages) {
+    let text = contentText(m.content)
+    if (Array.isArray(m.tool_calls)) {
+      for (let c of m.tool_calls) { text = text + "\n→ " + c["function"].name + " " + c["function"].arguments }
+    }
+    lines.push("[" + m.role + (typeof m.name === "string" ? " " + m.name : "") + "] " + text)
+  }
+  let all = lines.join("\n\n")
+  return all.length > maxChars ? "…" + all.slice(all.length - maxChars) : all
+}
+
+// The advisor's JSON answer; anything unreadable is taken as plain advice text.
+export fn parseAdvice(text: string): { verdict: string, advice: string[] } {
+  let t = text.trim()
+  let start = t.indexOf("{")
+  let end = t.lastIndexOf("}")
+  if (start >= 0 && end > start) {
+    try {
+      let j = JSON.parse(t.slice(start, end + 1))
+      let advice = Array.isArray(j.advice) ? j.advice.filter(fn(a) { return typeof a === "string" && a.trim() !== "" }) : []
+      return { verdict: j.verdict === "ok" ? "ok" : "revise", advice: advice }
+    } catch (e) { /* plain text below */ }
+  }
+  return { verdict: t === "" ? "ok" : "revise", advice: t === "" ? [] : [t] }
+}
+
+export fn createAdvisor(opts: AdvisorOptions): Advisor {
+  let call = roleModel(opts.callModel, opts.spec)
+  let maxCalls = typeof opts.maxCalls === "number" ? opts.maxCalls : 8
+  let maxChars = typeof opts.maxChars === "number" ? opts.maxChars : 600000
+  let triggers = opts.triggers ?? {}
+  let calls = 0
+  let tokensRead = 0
+  let emit = fn(e: AdvisorEvent): void {
+    if (typeof opts.onEvent === "function") { opts.onEvent(e) }
+  }
+  return {
+    stats: fn() { return { calls: calls, tokensRead: tokensRead } },
+    advise: async fn(req: AdviseRequest): any {
+      if (triggers[req.trigger] === false || calls >= maxCalls) { return null }
+      let transcript = renderTranscript(req.messages, maxChars)
+      calls = calls + 1
+      tokensRead = tokensRead + Math.ceil(transcript.length / 4)
+      emit({ type: "advisor:call", trigger: req.trigger, model: opts.spec.model, calls: calls, tokensRead: tokensRead })
+      let ask = TRIGGER_ASK[req.trigger] + (typeof req.detail === "string" && req.detail !== "" ? "\n\n" + req.detail : "")
+      let turn = null
+      try {
+        turn = await call([
+          { role: "system", content: ADVISOR_PROMPT },
+          { role: "user", content: "The session so far:\n\n" + transcript + "\n\n---\n" + ask }
+        ], [], {})
+      } catch (err) {
+        // A failed consultation is not the lead's problem: it carries on without advice.
+        return null
+      }
+      let parsed = parseAdvice(turn.text ?? "")
+      emit({ type: "advisor:advice", trigger: req.trigger, model: opts.spec.model, calls: calls, tokensRead: tokensRead, advice: parsed.advice, verdict: parsed.verdict })
+      if (parsed.verdict === "ok" || parsed.advice.length === 0) { return null }
+      return "Advisor (" + req.trigger + "):\n" + parsed.advice.map(fn(a) { return "» " + a }).join("\n")
+    }
+  }
+}
+
+// A stable signature for a failed tool run, so the same error is recognised when it comes back with different
+// numbers.
+export fn errorSignature(run: ToolRun): string {
+  let s = (run.summary ?? "").toLowerCase()
+  let out = ""
+  for (let ch of s) {
+    out = out + ((ch >= "0" && ch <= "9") ? "#" : ch)
+  }
+  return run.name + ":" + out.slice(0, 200)
+}

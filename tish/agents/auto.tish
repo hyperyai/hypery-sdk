@@ -1,0 +1,145 @@
+// Orchestration modes: how much model choreography a run gets.
+//
+// - "off":   exactly the host's model call; children inherit it. Nothing added.
+// - "auto":  (the default) one lead model; read-only children run on the cheap swarm model, at most 2 at once. No
+//            advisor, no router — most jobs stay one agent, or an agent and a subagent.
+// - "ultra": the full split — lead, swarm, advisor (before a plan, before done, on a repeated error) and, when the
+//            host turns it on, the router. The swarm runs wider as effort rises (6 / 8 / 12).
+//
+// `createOrchestration` turns a mode and the host's model call into the pieces the runtime and loop take.
+
+import { CallModel, Effort } from "./types.tish"
+import { DEFAULT_ROLES, RolePolicy, RoleSpec, mergeRoles, resolveRole, roleModel, roleOfProfileModel } from "./roles.tish"
+import { Advise, AdvisorEvent, AdvisorTriggers, createAdvisor } from "./advisor.tish"
+import { Route, RouterEvent, createRouter } from "./router.tish"
+
+export type OrchestrationMode = "off" | "auto" | "ultra"
+
+export type OrchestrationEvent = {
+  type: "role:model" | "advisor:call" | "advisor:advice" | "router:pick",
+  role: string?,
+  model: string?,
+  trigger: string?,
+  calls: number?,
+  tokensRead: number?,
+  advice: string[]?,
+  verdict: string?,
+  round: number?,
+  tool: string?,
+  p: number?,
+  sharp: boolean?
+}
+
+export type OrchestrationOptions = {
+  mode: OrchestrationMode?,
+  // Per-role overrides: a model id, or `{ model, effort, fallback }`.
+  roles: any?,
+  // The live model catalog (ids or `{ id }`): role models fall back along their chains to ones it has.
+  catalog: any[]?,
+  // The user's effort ("Faster ↔ Smarter"): the lead's effort, and in ultra how wide the swarm runs.
+  effort: Effort?,
+  // Ultra: the advisor's triggers and budget, or false for none.
+  advisor: any?,
+  // Ultra: turn the router on (`true`, or `{ threshold }`). Off by default.
+  router: any?,
+  // Background children at once; default by mode.
+  maxConcurrent: number?,
+  onEvent: ((OrchestrationEvent) => void)?
+}
+
+export type Orchestration = {
+  mode: OrchestrationMode,
+  roles: RolePolicy,
+  maxConcurrent: number,
+  // The lead's model call (the host's own in "off").
+  callModel: CallModel,
+  // A child's model call from its profile's `model`, or null for the lead's.
+  childModel: (string?) => CallModel?,
+  // For `runAgentLoop`: present only in ultra.
+  advise: Advise?,
+  route: Route?
+}
+
+// The swarm's width in ultra, by effort.
+export fn ultraConcurrency(effort: Effort?): number {
+  if (effort === "high" || effort === "xhigh") { return 12 }
+  if (effort === "low" || effort === "minimal" || effort === "none") { return 6 }
+  return 8
+}
+
+export const AUTO_MAX_CONCURRENT = 2
+
+export fn normalizeMode(mode: any): OrchestrationMode {
+  if (mode === "off" || mode === false) { return "off" }
+  if (mode === "ultra") { return "ultra" }
+  return "auto"
+}
+
+export fn createOrchestration(callModel: CallModel, opts: OrchestrationOptions?): Orchestration {
+  let o = opts ?? {}
+  let mode = normalizeMode(o.mode ?? "auto")
+  let catalog = o.catalog ?? null
+  let roles = mergeRoles(DEFAULT_ROLES, o.roles ?? null)
+  if (typeof o.effort === "string") { roles = mergeRoles(roles, { lead: { effort: o.effort } }) }
+  let emit = fn(e: any): void {
+    if (typeof o.onEvent === "function") { o.onEvent(e) }
+  }
+  if (mode === "off") {
+    return {
+      mode: mode, roles: roles,
+      maxConcurrent: typeof o.maxConcurrent === "number" ? o.maxConcurrent : 4,
+      callModel: callModel,
+      childModel: fn(m: string?): any { return null },
+      advise: null, route: null
+    }
+  }
+  let specs = {}
+  let calls = {}
+  let callFor = fn(role: string): CallModel {
+    if ((calls[role] ?? null) === null) {
+      let spec = resolveRole(role, roles, catalog)
+      specs[role] = spec
+      calls[role] = roleModel(callModel, spec)
+      emit({ type: "role:model", role: role, model: spec.model })
+    }
+    return calls[role]
+  }
+  let lead = callFor("lead")
+  let advise = null
+  let route = null
+  if (mode === "ultra") {
+    if (o.advisor !== false) {
+      let a = o.advisor !== null && typeof o.advisor === "object" ? o.advisor : {}
+      callFor("advisor")
+      advise = createAdvisor({
+        callModel: callModel, spec: specs.advisor, triggers: a.triggers ?? null,
+        maxCalls: a.maxCalls ?? null, maxChars: a.maxChars ?? null,
+        onEvent: fn(e: AdvisorEvent): void { emit(e) }
+      }).advise
+    }
+    if (o.router === true || (o.router !== null && typeof o.router === "object")) {
+      let r = typeof o.router === "object" ? o.router : {}
+      callFor("router")
+      route = createRouter({
+        callModel: callModel, spec: specs.router, threshold: r.threshold ?? null,
+        onEvent: fn(e: RouterEvent): void { emit(e) }
+      })
+    }
+  }
+  let width = mode === "ultra" ? ultraConcurrency(o.effort ?? null) : AUTO_MAX_CONCURRENT
+  return {
+    mode: mode, roles: roles,
+    maxConcurrent: typeof o.maxConcurrent === "number" ? o.maxConcurrent : width,
+    callModel: lead,
+    childModel: fn(profileModel: string?): any {
+      let role = roleOfProfileModel(profileModel)
+      // A pinned model id: the lead's call with that model.
+      if (role === null) { return roleModel(callModel, { model: profileModel, effort: specs.lead.effort ?? null, fallback: null }) }
+      // Auto keeps the advisor for ultra: a child asking for it gets the lead.
+      if (mode === "auto" && role !== "swarm") { return lead }
+      return callFor(role)
+    },
+    advise: advise,
+    route: route
+  }
+}

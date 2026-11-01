@@ -54,8 +54,12 @@ export type StopSignal = { aborted: boolean }
 // name (`forceTool(name)`), as OpenAI's `tool_choice`.
 export type ToolChoice = "auto" | "required" | "none" | { type: "function", "function": { name: string } }
 
-// Per-call request options a host's model call honours.
-export type ModelRequest = { toolChoice: ToolChoice? }
+// How hard the model thinks (the gateway's `reasoning.effort`).
+export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+
+// Per-call request options a host's model call honours: a tool choice, and a model id and effort that replace the
+// call's own for this request (how one model call serves every role in `roles.tish`).
+export type ModelRequest = { toolChoice: ToolChoice?, model: string?, effort: Effort? }
 
 // The host's model call: one streamed assistant turn. `request` is absent for a plain call.
 export type CallModel = (ChatMessage[], ChatToolSpec[], ModelHooks, StopSignal?, ModelRequest?) => Promise<ModelTurn>
@@ -94,7 +98,8 @@ export type AgentProfile = {
   tools: string[],
   // Never edits: only read-only tools, whatever `tools` says.
   readOnly: boolean?,
-  // A model id, "inherit" (the parent's), or "fast" (the host's cheapest tool-capable model).
+  // A model id, "inherit" (the parent's), "fast" (the host's cheapest tool-capable model), or a role name
+  // ("lead", "swarm", "advisor", "router") resolved through the run's orchestration policy.
   model: string?,
   // Round budget; 0 or absent means the core default.
   maxRounds: number?,

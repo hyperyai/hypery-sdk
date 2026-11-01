@@ -15,6 +15,7 @@
 // checks, waiting is checking the session between short `delay`s, and the runtime is a value made by
 // `createAgentRuntime` — no classes, nothing resolved from somewhere else.
 
+import { Orchestration } from "./auto.tish"
 import { delay } from "tish:timers"
 import { runAgentLoop, LoopTool } from "./loop.tish"
 import { AgentProfile, CallModel, ChatMessage, StopSignal, ToolCall, ToolRun } from "./types.tish"
@@ -23,7 +24,7 @@ export type SessionStatus = "queued" | "running" | "done" | "error" | "stopped"
 
 // What the host's UI can follow: one stream for every agent. `type` says which fields are set.
 export type AgentEvent = {
-  type: "session" | "tool-start" | "tool-end" | "text" | "report" | "nudge",
+  type: "session" | "tool-start" | "tool-end" | "text" | "report" | "nudge" | "role:model" | "advisor:call" | "advisor:advice" | "router:pick",
   sessionId: string,
   status: SessionStatus?,
   profile: string?,
@@ -33,7 +34,9 @@ export type AgentEvent = {
   summary: string?,
   delta: string?,
   message: string?,
-  question: boolean?
+  question: boolean?,
+  // Orchestration events (see auto.tish): the role, model, advisor trigger and verdict, or the router's pick.
+  orchestration: any?
 }
 
 export type AgentSession = {
@@ -76,6 +79,9 @@ export type AgentHost = {
   // The model call for one child, from its profile's `model` ("inherit", "fast" or an id): a host that runs
   // read-only surveys on a cheaper model returns that here. Absent, or null returned, = `callModel`.
   childModel: ((ChildRunContext) => CallModel?)?,
+  // Model roles for children (from `createOrchestration`): used when `childModel` is absent or returns null, and
+  // for `maxConcurrent` when that is absent.
+  orchestration: Orchestration?,
   profiles: () => AgentProfile[],
   // The tools a child of `profile` may call (the runtime adds `report_to_parent`).
   childTools: (ChildRunContext) => LoopTool[],
@@ -214,7 +220,8 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
   let waiting = []
   let listeners = []
   let pendingSaves = 0
-  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : 4
+  let orch = host.orchestration ?? null
+  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : (orch !== null ? orch.maxConcurrent : 4)
 
   let now = fn(): number { return typeof host.now === "function" ? host.now() : Date.now() }
   let changed = fn(): void {
@@ -273,6 +280,9 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
     let ctx = { session: session, profile: profile, readOnly: forceReadOnly || profile.readOnly === true, signal: control.signal }
     let tools = host.childTools(ctx).concat([REPORT_SPEC])
     let childModel = typeof host.childModel === "function" ? host.childModel(ctx) : null
+    if (typeof childModel !== "function" && orch !== null) {
+      childModel = orch.childModel(ctx.readOnly && (profile.model === null || profile.model === undefined) ? "fast" : (profile.model ?? null))
+    }
     let budget = typeof profile.maxRounds === "number" && profile.maxRounds > 0 ? profile.maxRounds : (typeof host.maxRounds === "number" && host.maxRounds > 0 ? host.maxRounds : 30)
     let ok = true
     let summary = ""

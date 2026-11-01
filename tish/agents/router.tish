@@ -1,0 +1,62 @@
+// The router: a cheap model that makes the next-step pick (which tool) before the lead's turn. A confident pick
+// ("sharp", p >= threshold) is forced as the round's tool choice; an unsure one ("split") is left to the lead.
+// Plugs into `runAgentLoop` as `route`. Off unless a host turns it on.
+
+import { CallModel, ChatMessage, ChatToolSpec, ToolChoice, forceTool } from "./types.tish"
+import { RoleSpec, roleModel } from "./roles.tish"
+import { renderTranscript } from "./advisor.tish"
+
+export type RouteRequest = { round: number, messages: ChatMessage[], tools: ChatToolSpec[] }
+
+// The round's tool choice, or null to let the lead choose.
+export type Route = (RouteRequest) => Promise<ToolChoice?>
+
+export type RouterEvent = { type: "router:pick", round: number, model: string, tool: string?, p: number, sharp: boolean }
+
+export type RouterOptions = {
+  callModel: CallModel,
+  spec: RoleSpec,
+  // Confidence needed to force a pick. Default 0.8.
+  threshold: number?,
+  // Transcript characters it reads (the most recent). Default 12000.
+  maxChars: number?,
+  onEvent: ((RouterEvent) => void)?
+}
+
+const ROUTER_PROMPT = "You pick the next tool for a coding agent. Answer with JSON only: {\"tool\": \"<one of the tool names, or none>\", \"p\": <your confidence 0..1>}. Pick \"none\" when the agent should answer in words or the choice is unclear."
+
+export fn createRouter(opts: RouterOptions): Route {
+  let call = roleModel(opts.callModel, opts.spec)
+  let threshold = typeof opts.threshold === "number" ? opts.threshold : 0.8
+  let maxChars = typeof opts.maxChars === "number" ? opts.maxChars : 12000
+  return async fn(req: RouteRequest): any {
+    if (!Array.isArray(req.tools) || req.tools.length === 0) { return null }
+    let names = req.tools.map(fn(t) { return t["function"].name })
+    let turn = null
+    try {
+      turn = await call([
+        { role: "system", content: ROUTER_PROMPT },
+        { role: "user", content: "Tools: " + names.join(", ") + "\n\nRecent session:\n" + renderTranscript(req.messages, maxChars) }
+      ], [], {})
+    } catch (err) {
+      return null
+    }
+    let tool = null
+    let p = 0
+    let t = (turn.text ?? "").trim()
+    let start = t.indexOf("{")
+    let end = t.lastIndexOf("}")
+    if (start >= 0 && end > start) {
+      try {
+        let j = JSON.parse(t.slice(start, end + 1))
+        if (typeof j.tool === "string" && names.includes(j.tool)) { tool = j.tool }
+        if (typeof j.p === "number") { p = j.p }
+      } catch (e) { /* unreadable: no pick */ }
+    }
+    let sharp = tool !== null && p >= threshold
+    if (typeof opts.onEvent === "function") {
+      opts.onEvent({ type: "router:pick", round: req.round, model: opts.spec.model, tool: tool, p: p, sharp: sharp })
+    }
+    return sharp ? forceTool(tool) : null
+  }
+}
