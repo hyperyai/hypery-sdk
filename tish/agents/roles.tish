@@ -15,14 +15,8 @@ export type RoleSpec = {
   fallback: string[]?
 }
 
-export type RolePolicy = { lead: RoleSpec, swarm: RoleSpec, advisor: RoleSpec, router: RoleSpec }
-
-export const DEFAULT_ROLES: RolePolicy = {
-  lead: { model: "anthropic/claude-sonnet-5.5", effort: "high", fallback: ["anthropic/claude-sonnet-4.5", "openai/gpt-5"] },
-  swarm: { model: "anthropic/claude-haiku-5.5", effort: "low", fallback: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash"] },
-  advisor: { model: "anthropic/claude-opus-5.5", effort: "high", fallback: ["anthropic/claude-opus-4.5", "openai/gpt-5"] },
-  router: { model: "anthropic/claude-haiku-5.5", effort: "none", fallback: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash"] }
-}
+// The roles a run uses, from an orchestration skill: a role left out is not used. No defaults live in the SDK.
+export type RolePolicy = { lead: RoleSpec?, swarm: RoleSpec?, advisor: RoleSpec?, router: RoleSpec? }
 
 export const MODEL_ROLES: string[] = ["lead", "swarm", "advisor", "router"]
 
@@ -51,21 +45,23 @@ export fn resolveCatalogModel(wanted: string, fallback: string[]?, catalog: any[
   return wanted
 }
 
-// A role's spec with its model resolved against the catalog.
-export fn resolveRole(role: string, roles: RolePolicy, catalog: any[]?): RoleSpec {
-  let spec = roles[role] ?? roles.lead
+// A role's spec with its model resolved against the catalog, or null when the policy has no such role.
+export fn resolveRole(role: string, roles: any, catalog: any[]?): any {
+  let spec = roles !== null && typeof roles === "object" ? (roles[role] ?? null) : null
+  if (spec === null || typeof spec.model !== "string" || spec.model === "") { return null }
   return { model: resolveCatalogModel(spec.model, spec.fallback ?? null, catalog), effort: spec.effort ?? null, fallback: spec.fallback ?? null }
 }
 
 // `roles` with `overrides` laid over it, role by role (an override may be a model id, or give only `model` or only
 // `effort`).
-export fn mergeRoles(roles: RolePolicy, overrides: any?): RolePolicy {
-  if ((overrides ?? null) === null || typeof overrides !== "object") { return roles }
-  let out = { ...roles }
+export fn mergeRoles(roles: any, overrides: any?): any {
+  let base = roles !== null && typeof roles === "object" ? roles : {}
+  if ((overrides ?? null) === null || typeof overrides !== "object") { return base }
+  let out = { ...base }
   for (let r of MODEL_ROLES) {
     let o = overrides[r] ?? null
     if (o === null) { continue }
-    out[r] = typeof o === "string" ? { ...roles[r], model: o } : { ...roles[r], ...o }
+    out[r] = typeof o === "string" ? { ...(base[r] ?? {}), model: o } : { ...(base[r] ?? {}), ...o }
   }
   return out
 }

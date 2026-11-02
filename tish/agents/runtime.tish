@@ -221,7 +221,7 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
   let listeners = []
   let pendingSaves = 0
   let orch = host.orchestration ?? null
-  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : (orch !== null ? orch.maxConcurrent : 4)
+  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : ((orch !== null ? orch.maxConcurrent : null) ?? 4)
 
   let now = fn(): number { return typeof host.now === "function" ? host.now() : Date.now() }
   let changed = fn(): void {
