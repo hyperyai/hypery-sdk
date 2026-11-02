@@ -92,8 +92,9 @@ export type AgentHost = {
   store: SessionStore?,
   // Every agent's progress, for the host's UI.
   onEvent: ((AgentEvent) => void)?,
-  // Background agents running at once; more wait as "queued". Default 4.
-  maxConcurrent: number?,
+  // Background agents running at once; more wait as "queued". A number, or a function read each time one starts
+  // (so the limit can follow the current task, e.g. its orchestration skill). Default 4.
+  maxConcurrent: any?,
   // Sessions changed (spawned, finished, messaged, stopped).
   onChange: (() => void)?,
   // Default child round budget.
@@ -221,7 +222,13 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
   let listeners = []
   let pendingSaves = 0
   let orch = host.orchestration ?? null
-  let maxConcurrent = typeof host.maxConcurrent === "number" ? host.maxConcurrent : ((orch !== null ? orch.maxConcurrent : null) ?? 4)
+  // The limit now: the host's (a number or a function), else the orchestration's, else 4.
+  let maxConcurrent = fn(): number {
+    let h = typeof host.maxConcurrent === "function" ? host.maxConcurrent() : host.maxConcurrent
+    if (typeof h === "number" && h > 0) { return h }
+    let o = orch !== null ? (orch.maxConcurrent ?? null) : null
+    return typeof o === "number" && o > 0 ? o : 4
+  }
 
   let now = fn(): number { return typeof host.now === "function" ? host.now() : Date.now() }
   let changed = fn(): void {
@@ -375,10 +382,11 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
         } catch (e) {
           // `run` records its own failures on the session.
         }
-        job = takeNext()
+        // Over a lowered limit: give the slot up instead of taking more.
+        job = active <= maxConcurrent() ? takeNext() : null
         if (job === null) {
           active = Math.max(0, active - 1)
-          if (waiting.length > 0 && active < maxConcurrent) {
+          if (waiting.length > 0 && active < maxConcurrent()) {
             active = active + 1
             job = takeNext()
             if (job === null) { active = Math.max(0, active - 1) }
@@ -389,7 +397,14 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
   }
   // A background run: started now when a slot is free, otherwise queued until a worker takes it.
   let startBackground = fn(session: AgentSession, go: () => Promise<any>): void {
-    if (active < maxConcurrent) {
+    // A raised limit: start queued agents first, in order.
+    while (waiting.length > 0 && active < maxConcurrent()) {
+      let next = takeNext()
+      if (next === null) { break }
+      active = active + 1
+      runSlot(next)
+    }
+    if (active < maxConcurrent()) {
       active = active + 1
       runSlot({ session: session, go: go })
       return

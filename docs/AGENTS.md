@@ -180,6 +180,8 @@ A role left out is not used (no `lead`: the host's model; no `swarm`: children o
 off). Load the product's skills with `parseOrchestrationSkill`, pick one with `chooseOrchestrationSkill(callModel,
 skills, task, mode)` (the host's own model chooses when several fit), and pass it to `createOrchestration(callModel,
 { mode, skill })`. With no skill the run behaves as Off. Put `orch.guidance` in the lead's system prompt.
+`createAgentRuntime`'s `maxConcurrent` may be a function, read each time a background agent starts, so a long-lived
+runtime can follow each task's skill (`() => currentOrch?.maxConcurrent`).
 
 ## Wiring it into an app
 
