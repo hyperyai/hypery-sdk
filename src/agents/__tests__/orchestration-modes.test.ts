@@ -202,3 +202,22 @@ describe('router', () => {
     expect(await run(0.47)).toBeNull()
   })
 })
+
+describe('live maxConcurrent', () => {
+  it('reads the limit each time a background agent starts', async () => {
+    let limit = 1
+    const gates: (() => void)[] = []
+    const call: CallModel = () => new Promise(res => gates.push(() => res(turn('done'))))
+    const profiles: AgentProfile[] = [{ id: 'w', description: 'w', instructions: 'w', tools: ['*'] }]
+    const rt = createAgentRuntime({ callModel: call, maxConcurrent: () => limit, profiles: () => profiles, childTools: () => [], execChildTool: ok as any, childSystemPrompt: () => 'sys' } as any)
+    const spawn = () => rt.spawn({ profileId: 'w', prompt: 'go', description: 'go', background: true } as any) as any
+    const a = await spawn(), b = await spawn()
+    await new Promise(r => setTimeout(r, 0))
+    expect([rt.get(a.id)!.status, rt.get(b.id)!.status]).toEqual(['running', 'queued'])
+    limit = 3
+    const c = await spawn()
+    await new Promise(r => setTimeout(r, 0))
+    expect([rt.get(a.id)!.status, rt.get(b.id)!.status, rt.get(c.id)!.status]).toEqual(['running', 'running', 'running'])
+    gates.forEach(g => g())
+  })
+})
