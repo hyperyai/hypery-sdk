@@ -62,7 +62,7 @@ fn num(v: string?): number? {
 
 // The skill in a SKILL.md, or null when it is not an orchestration skill (`kind: orchestration`).
 export fn parseOrchestrationSkill(text: string): OrchestrationSkill? {
-  let src = typeof text === "string" ? text.replace(/\r\n/g, "\n") : ""
+  let src = typeof text === "string" ? text.split("\r\n").join("\n") : ""
   if (!src.startsWith("---\n")) { return null }
   let end = src.indexOf("\n---", 4)
   if (end < 0) { return null }
@@ -120,7 +120,9 @@ export async fn chooseOrchestrationSkill(callModel: CallModel, skills: any[], ta
   } catch (err) {
     return null
   }
-  let said = String(turn.text ?? "").trim().toLowerCase().replace(/[`'"*.]/g, "")
+  // No regex literals: the native backend has no RegExp.
+  let said = String(turn.text ?? "").trim().toLowerCase()
+  for (let ch of ["`", "'", "\"", "*", "."]) { said = said.split(ch).join("") }
   for (let s of candidates) {
     if (said === s.name.toLowerCase() || said.includes(s.name.toLowerCase())) { return s }
   }
