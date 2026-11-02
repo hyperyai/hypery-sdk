@@ -151,6 +151,36 @@ The same checkpoints are what a server-side run needs: any process holding the s
 
 ---
 
+### 8. Orchestration — models per role, from skills
+
+Off / Auto / Ultra decide how much model choreography a run gets. **The SDK has no models, efforts or limits of
+its own.** They come from an *orchestration skill*: a `SKILL.md` each product ships and users edit, chosen per task
+from its description like any other skill.
+
+```markdown
+---
+name: deep-work
+kind: orchestration
+description: Large multi-file changes where a plan and a second opinion pay off.
+modes: ultra
+lead: anthropic/claude-sonnet-5.5
+lead_effort: high
+lead_fallback: anthropic/claude-sonnet-4.5
+swarm: anthropic/claude-haiku-5.5
+advisor: anthropic/claude-opus-5.5
+advisor_triggers: plan, done, error
+router: anthropic/claude-haiku-5.5
+router_threshold: 0.8
+max_concurrent: 8
+---
+Guidance the lead and the advisor read.
+```
+
+A role left out is not used (no `lead`: the host's model; no `swarm`: children on the lead; no `advisor` / `router`:
+off). Load the product's skills with `parseOrchestrationSkill`, pick one with `chooseOrchestrationSkill(callModel,
+skills, task, mode)` (the host's own model chooses when several fit), and pass it to `createOrchestration(callModel,
+{ mode, skill })`. With no skill the run behaves as Off. Put `orch.guidance` in the lead's system prompt.
+
 ## Wiring it into an app
 
 ```ts

@@ -37,6 +37,8 @@ export type AdvisorOptions = {
   maxCalls: number?,
   // Transcript characters it reads per call (the most recent kept). Default 600000.
   maxChars: number?,
+  // The orchestration skill's guidance: what this team wants the advisor to watch for.
+  guidance: string?,
   onEvent: ((AdvisorEvent) => void)?
 }
 
@@ -118,7 +120,7 @@ export fn createAdvisor(opts: AdvisorOptions): Advisor {
       let turn = null
       try {
         turn = await call([
-          { role: "system", content: ADVISOR_PROMPT },
+          { role: "system", content: typeof opts.guidance === "string" && opts.guidance.trim() !== "" ? ADVISOR_PROMPT + "\n\nGuidance for this kind of task:\n" + opts.guidance.trim() : ADVISOR_PROMPT },
           { role: "user", content: "The session so far:\n\n" + transcript + "\n\n---\n" + ask }
         ], [], {}, null, null)
       } catch (err) {

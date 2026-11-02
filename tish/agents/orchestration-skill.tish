@@ -1,0 +1,128 @@
+// Orchestration skills: how a run splits work across models, written as a skill (SKILL.md) each product ships and
+// users edit. The SDK has no model ids of its own; every role, effort, trigger and limit comes from a skill, and the
+// skill is chosen per task from its description, like any other skill.
+//
+//   ---
+//   name: big-refactor
+//   kind: orchestration
+//   description: Large multi-file changes where a plan and a second opinion pay off.
+//   modes: ultra
+//   lead: anthropic/claude-sonnet-5.5
+//   lead_effort: high
+//   lead_fallback: anthropic/claude-sonnet-4.5, openai/gpt-5
+//   swarm: anthropic/claude-haiku-5.5
+//   swarm_effort: low
+//   advisor: anthropic/claude-opus-5.5
+//   advisor_triggers: plan, done, error
+//   router: anthropic/claude-haiku-5.5
+//   router_threshold: 0.8
+//   max_concurrent: 8
+//   ---
+//   Guidance the lead and the advisor read: when to fan out, what the advisor should look for, …
+//
+// A role left out is not used: no `lead` keeps the host's own model, no `swarm` runs children on the lead, no
+// `advisor` or `router` turns that part off.
+
+import { CallModel, ChatMessage } from "./types.tish"
+import { MODEL_ROLES, RoleSpec } from "./roles.tish"
+
+export type OrchestrationSkill = {
+  name: string,
+  description: string,
+  // The picker modes the skill serves ("auto", "ultra"); empty serves both.
+  modes: string[],
+  // Only the roles the skill names.
+  roles: any,
+  advisorTriggers: string[]?,
+  advisorMaxCalls: number?,
+  routerThreshold: number?,
+  maxConcurrent: number?,
+  // The skill's body: guidance for the lead and the advisor.
+  guidance: string
+}
+
+fn splitList(v: string?): string[] {
+  if ((v ?? null) === null) { return [] }
+  return v.split(",").map(fn(s) { return s.trim() }).filter(fn(s) { return s !== "" })
+}
+
+fn unquote(v: string): string {
+  let t = v.trim()
+  if (t.length >= 2 && ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'")))) {
+    return t.slice(1, t.length - 1)
+  }
+  return t
+}
+
+fn num(v: string?): number? {
+  if ((v ?? null) === null || v === "") { return null }
+  let n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+// The skill in a SKILL.md, or null when it is not an orchestration skill (`kind: orchestration`).
+export fn parseOrchestrationSkill(text: string): OrchestrationSkill? {
+  let src = typeof text === "string" ? text.replace(/\r\n/g, "\n") : ""
+  if (!src.startsWith("---\n")) { return null }
+  let end = src.indexOf("\n---", 4)
+  if (end < 0) { return null }
+  let head = src.slice(4, end)
+  let body = src.slice(end + 4)
+  if (body.startsWith("\n")) { body = body.slice(1) }
+  let f = {}
+  for (let line of head.split("\n")) {
+    let i = line.indexOf(":")
+    if (i <= 0 || line.trim().startsWith("#")) { continue }
+    f[line.slice(0, i).trim().toLowerCase()] = unquote(line.slice(i + 1))
+  }
+  if ((f["kind"] ?? "") !== "orchestration") { return null }
+  let roles = {}
+  for (let r of MODEL_ROLES) {
+    let model = f[r] ?? ""
+    if (model === "") { continue }
+    let spec: RoleSpec = { model: model, effort: (f[r + "_effort"] ?? "") !== "" ? f[r + "_effort"] : null, fallback: splitList(f[r + "_fallback"] ?? null) }
+    roles[r] = spec
+  }
+  let triggers = splitList(f["advisor_triggers"] ?? null)
+  return {
+    name: (f["name"] ?? "") !== "" ? f["name"] : "orchestration",
+    description: f["description"] ?? "",
+    modes: splitList(f["modes"] ?? null).map(fn(m) { return m.toLowerCase() }),
+    roles: roles,
+    advisorTriggers: triggers.length > 0 ? triggers : null,
+    advisorMaxCalls: num(f["advisor_max_calls"] ?? null),
+    routerThreshold: num(f["router_threshold"] ?? null),
+    maxConcurrent: num(f["max_concurrent"] ?? null),
+    guidance: body.trim()
+  }
+}
+
+// The skills that serve a mode ("off" serves none).
+export fn skillsForMode(skills: any[], mode: string): OrchestrationSkill[] {
+  if (mode === "off" || !Array.isArray(skills)) { return [] }
+  return skills.filter(fn(s) { return s !== null && typeof s === "object" && (s.modes.length === 0 || s.modes.includes(mode)) })
+}
+
+// The skill for this task: the only candidate, or the one the host's own model picks from the descriptions (no
+// model of the SDK's). Null when none serve the mode or the model picks none.
+export async fn chooseOrchestrationSkill(callModel: CallModel, skills: any[], task: string, mode: string): any {
+  let candidates = skillsForMode(skills, mode)
+  if (candidates.length === 0) { return null }
+  if (candidates.length === 1) { return candidates[0] }
+  let list = candidates.map(fn(s) { return "- " + s.name + ": " + s.description }).join("\n")
+  let messages: ChatMessage[] = [
+    { role: "system", content: "Pick the orchestration skill that fits the task. Reply with its name only, or `none`." },
+    { role: "user", content: "Skills:\n" + list + "\n\nTask:\n" + task }
+  ]
+  let turn = null
+  try {
+    turn = await callModel(messages, [], {}, null, null)
+  } catch (err) {
+    return null
+  }
+  let said = String(turn.text ?? "").trim().toLowerCase().replace(/[`'"*.]/g, "")
+  for (let s of candidates) {
+    if (said === s.name.toLowerCase() || said.includes(s.name.toLowerCase())) { return s }
+  }
+  return null
+}

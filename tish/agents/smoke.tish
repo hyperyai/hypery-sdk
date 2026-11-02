@@ -5,7 +5,7 @@ import { delay } from "tish:timers"
 import { utf8Encode } from "tish:encoding"
 import {
   createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL,
-  createOrchestration
+  createOrchestration, parseOrchestrationSkill
 } from "./index.tish"
 
 fn turn(text: string, calls: any[]): any {
@@ -109,7 +109,7 @@ let roleSeen = []
 let orch = createOrchestration(async fn(m: any[], t: any[], h: any, sg: any, req: any): any {
   roleSeen.push(req.model)
   return { text: "{\"verdict\":\"ok\",\"advice\":[]}", toolCalls: [] }
-}, { mode: "ultra" })
+}, { mode: "ultra", skill: parseOrchestrationSkill("---\nname: deep\nkind: orchestration\nmodes: ultra\nlead: m/lead\nswarm: m/swarm\nadvisor: m/advisor\n---\nWatch the tests.") })
 await orch.callModel([{ role: "user", content: "hi" }], [], null, null)
 await orch.childModel("fast")([{ role: "user", content: "hi" }], [], null, null)
 let advice = await orch.advise({ trigger: "plan", messages: [{ role: "user", content: "hi" }], detail: null })

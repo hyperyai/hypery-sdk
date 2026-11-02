@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   createAgentRuntime, createHyperyModel, createOrchestration, resolveCatalogModel, runAgentLoop, roleOfProfileModel,
+  parseOrchestrationSkill, chooseOrchestrationSkill, skillsForMode,
   type AgentProfile, type CallModel, type LoopTool, type ModelRequest, type ModelTurn,
 } from '../index.js'
 
@@ -35,6 +36,61 @@ describe('roles', () => {
   })
 })
 
+// Skills as a product would ship them (the SDK has no models of its own: these ids are made up).
+const ULTRA = `---
+name: deep-work
+kind: orchestration
+description: Large multi-file changes.
+modes: ultra
+lead: m/lead
+lead_effort: high
+swarm: m/swarm
+swarm_effort: low
+advisor: m/advisor
+advisor_triggers: plan, done, error
+router: m/router
+router_threshold: 0.8
+max_concurrent: 8
+---
+Fan out searches first. Advisor: watch for skipped tests.`
+const AUTO = `---
+name: light
+kind: orchestration
+description: Everyday tasks.
+modes: auto
+swarm: m/swarm
+max_concurrent: 2
+---
+Stay one agent unless a search is big.`
+const ultra = () => parseOrchestrationSkill(ULTRA)!
+const auto = () => parseOrchestrationSkill(AUTO)!
+
+describe('orchestration skills', () => {
+  it('parses roles, triggers, limits and guidance from SKILL.md', () => {
+    const s = ultra()
+    expect(s.name).toBe('deep-work')
+    expect(s.modes).toEqual(['ultra'])
+    expect(s.roles.lead).toEqual({ model: 'm/lead', effort: 'high', fallback: [] })
+    expect(s.roles.advisor.model).toBe('m/advisor')
+    expect(s.advisorTriggers).toEqual(['plan', 'done', 'error'])
+    expect(s.routerThreshold).toBe(0.8)
+    expect(s.maxConcurrent).toBe(8)
+    expect(s.guidance).toContain('skipped tests')
+  })
+  it('ignores a skill that is not an orchestration skill', () => {
+    expect(parseOrchestrationSkill('---\nname: x\n---\nhi')).toBeNull()
+    expect(parseOrchestrationSkill('no frontmatter')).toBeNull()
+  })
+  it('picks by mode, and by the host model when several fit', async () => {
+    expect(skillsForMode([ultra(), auto()], 'auto').map(s => s.name)).toEqual(['light'])
+    expect(skillsForMode([ultra(), auto()], 'off')).toEqual([])
+    const both = [ultra(), { ...ultra(), name: 'quick-fix', description: 'One small bug.' }]
+    const host: CallModel = async () => turn('quick-fix')
+    expect((await chooseOrchestrationSkill(host, both, 'fix the typo', 'ultra'))?.name).toBe('quick-fix')
+    expect(await chooseOrchestrationSkill(async () => turn('none'), both, 'x', 'ultra')).toBeNull()
+  })
+})
+
 // A model that records each request's model and answers by role.
 function recorder(answer: (req: ModelRequest | undefined, msgs: any[]) => ModelTurn) {
   const seen: (string | undefined)[] = []
@@ -45,42 +101,52 @@ function recorder(answer: (req: ModelRequest | undefined, msgs: any[]) => ModelT
 describe('modes', () => {
   it('off: the host model untouched, no advisor or router', () => {
     const { call } = recorder(() => turn('x'))
-    const o = createOrchestration(call, { mode: 'off' })
+    const o = createOrchestration(call, { mode: 'off', skill: ultra() })
     expect(o.callModel).toBe(call)
     expect(o.advise).toBeNull()
     expect(o.route).toBeNull()
     expect(o.childModel('fast')).toBeNull()
   })
 
-  it('auto: no advisor or router, a small cap, read-only children on the swarm model', async () => {
+  it('no skill: behaves as off, nothing hard-coded', () => {
+    const { call } = recorder(() => turn('x'))
+    const o = createOrchestration(call, { mode: 'ultra' })
+    expect(o.callModel).toBe(call)
+    expect(o.skill).toBeNull()
+    expect(o.advise).toBeNull()
+    expect(o.maxConcurrent).toBeNull()
+  })
+
+  it("auto skill: no lead keeps the host's model, read-only children on the skill's swarm", async () => {
     const { seen, call } = recorder(() => turn('done'))
-    const events: any[] = []
-    const o = createOrchestration(call, { mode: 'auto', onEvent: e => events.push(e) })
+    const o = createOrchestration(call, { mode: 'auto', skill: auto() })
     expect(o.advise).toBeNull()
     expect(o.route).toBeNull()
     expect(o.maxConcurrent).toBe(2)
     await o.childModel('fast')!([], [], {})
     await o.callModel([], [], {})
-    expect(seen).toEqual(['anthropic/claude-haiku-5.5', 'anthropic/claude-sonnet-5.5'])
-    expect(events.filter(e => e.type === 'role:model').map(e => e.role).sort()).toEqual(['lead', 'swarm'])
+    expect(seen).toEqual(['m/swarm', undefined])
+    expect(o.guidance).toContain('one agent')
   })
 
-  it('ultra: advisor on, swarm width follows effort, router only when asked', () => {
+  it("ultra skill: the skill's roles, limit, advisor and router", () => {
     const { call } = recorder(() => turn('x'))
-    expect(createOrchestration(call, { mode: 'ultra', effort: 'high' }).maxConcurrent).toBe(12)
-    expect(createOrchestration(call, { mode: 'ultra' }).advise).not.toBeNull()
-    expect(createOrchestration(call, { mode: 'ultra' }).route).toBeNull()
-    expect(createOrchestration(call, { mode: 'ultra', router: true }).route).not.toBeNull()
+    const o = createOrchestration(call, { mode: 'ultra', skill: ultra() })
+    expect(o.maxConcurrent).toBe(8)
+    expect(o.advise).not.toBeNull()
+    expect(o.route).not.toBeNull()
+    const noRouter = { ...ultra(), routerThreshold: null }
+    expect(createOrchestration(call, { mode: 'ultra', skill: noRouter }).route).toBeNull()
   })
 
-  it('the runtime puts a read-only child on the swarm model and caps by mode', async () => {
+  it('the runtime puts a read-only child on the swarm model', async () => {
     const { seen, call } = recorder(() => turn('found it'))
-    const o = createOrchestration(call, { mode: 'auto' })
+    const o = createOrchestration(call, { mode: 'auto', skill: auto() })
     const profiles: AgentProfile[] = [{ id: 'explorer', description: 'e', instructions: 'e', tools: ['*'], readOnly: true, model: 'fast' }]
     const rt = createAgentRuntime({ callModel: o.callModel, orchestration: o, profiles: () => profiles, childTools: () => [], execChildTool: ok as any, childSystemPrompt: () => 'sys' })
     const r = await rt.spawn({ profileId: 'explorer', prompt: 'look', description: 'look' } as any)
     expect(r.kind).toBe('done')
-    expect(seen).toEqual(['anthropic/claude-haiku-5.5'])
+    expect(seen).toEqual(['m/swarm'])
   })
 })
 
@@ -90,7 +156,7 @@ describe('advisor in the loop (ultra)', () => {
     const triggers: string[] = []
     let leadTurns = 0
     const call: CallModel = async (msgs, _t, _h, _s, req) => {
-      if (req?.model === 'anthropic/claude-opus-5.5') {
+      if (req?.model === 'm/advisor') {
         const ask = String(msgs[msgs.length - 1].content)
         triggers.push(ask.includes('about to plan') ? 'plan' : ask.includes('about to say it is done') ? 'done' : ask.includes('same error') ? 'error' : '?')
         return turn(JSON.stringify({ verdict: triggers.length === 1 ? 'ok' : 'revise', advice: ['check the fixture'] }))
@@ -98,7 +164,7 @@ describe('advisor in the loop (ultra)', () => {
       leadTurns++
       return leadTurns <= 2 ? turn('', ['t']) : turn('finished')
     }
-    const o = createOrchestration(call, { mode: 'ultra' })
+    const o = createOrchestration(call, { mode: 'ultra', skill: { ...ultra(), routerThreshold: null } })
     const failing = async (c: any) => ({ id: c.id, name: c.name, argsText: c.argsText, ok: false, summary: 'ENOENT fixture 42', content: '{"error":"x"}' })
     return { triggers, o, failing, leadTurns: () => leadTurns }
   }
@@ -110,10 +176,10 @@ describe('advisor in the loop (ultra)', () => {
     expect(out.messages.some(m => typeof m.content === 'string' && m.content.startsWith('Advisor (error)'))).toBe(true)
   })
 
-  it('auto never consults', async () => {
+  it('a skill without an advisor never consults', async () => {
     let calls = 0
-    const call: CallModel = async (_m, _t, _h, _s, req) => { calls++; if (req?.model?.includes('opus')) throw new Error('advisor called'); return turn('done') }
-    const o = createOrchestration(call, { mode: 'auto' })
+    const call: CallModel = async (_m, _t, _h, _s, req) => { calls++; if (req?.model === 'm/advisor') throw new Error('advisor called'); return turn('done') }
+    const o = createOrchestration(call, { mode: 'auto', skill: auto() })
     await runAgentLoop({ messages: [{ role: 'user', content: 'go' }], tools: [tool('t')], callModel: o.callModel, execTool: ok, advise: o.advise })
     expect(calls).toBe(1)
   })
@@ -127,7 +193,7 @@ describe('router', () => {
       choices.push(req?.toolChoice ?? null)
       return msgs.some(m => m.role === 'tool') ? turn('done') : turn('', ['edit'])
     }
-    const o = createOrchestration(call, { mode: 'ultra', advisor: false, router: { threshold: 0.8 } })
+    const o = createOrchestration(call, { mode: 'ultra', skill: { ...ultra(), roles: { lead: ultra().roles.lead, router: ultra().roles.router } } })
     await runAgentLoop({ messages: [{ role: 'user', content: 'go' }], tools: [tool('edit', false)], callModel: o.callModel, execTool: ok, route: o.route })
     return choices[0]
   }
