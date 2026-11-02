@@ -141,7 +141,7 @@ export fn modelSummarizer(callModel: CallModel): any {
     let out = await callModel([
       { role: "system", content: "Summarise this agent work log for the agent itself to continue from: what was asked, what was done (with ids and names), what was found, what is left. Be specific and brief." },
       { role: "user", content: text }
-    ], [], {})
+    ], [], {}, null, null)
     return out.text.trim()
   }
 }

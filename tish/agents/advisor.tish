@@ -120,7 +120,7 @@ export fn createAdvisor(opts: AdvisorOptions): Advisor {
         turn = await call([
           { role: "system", content: ADVISOR_PROMPT },
           { role: "user", content: "The session so far:\n\n" + transcript + "\n\n---\n" + ask }
-        ], [], {})
+        ], [], {}, null, null)
       } catch (err) {
         // A failed consultation is not the lead's problem: it carries on without advice.
         return null
