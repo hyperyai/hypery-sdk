@@ -1,10 +1,18 @@
 // Run the agent core's smoke program (tish/agents/smoke.tish) on Tish's VM and as the JavaScript the package
 // ships, and check both print the same. Dune runs the core natively; Tish's own CI covers that backend.
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+// Tish's native (Rust) backend has no RegExp: a regex literal in the agent core breaks native hosts like dune-server.
+for (const f of readdirSync('tish/agents').filter(n => n.endsWith('.tish'))) {
+  const code = readFileSync(join('tish/agents', f), 'utf8').split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+  if (/(^|[=(,:!&|?{};]|return)\s*\/(?![/*])[^/\n]+\/[gimsuy]*/m.test(code) || code.includes('new RegExp')) {
+    console.error(`tish/agents/${f}: regex literal or RegExp — the native backend has no RegExp`)
+    process.exit(1)
+  }
+}
 const tish = (...args) => execFileSync(process.env.TISH || 'tish', args, { encoding: 'utf8' })
 const vm = tish('run', '--feature', 'timers,promise,encoding', 'tish/agents/smoke.tish')
 const out = mkdtempSync(join(tmpdir(), 'agents-smoke-'))
