@@ -37,7 +37,7 @@ export fn createRouter(opts: RouterOptions): Route {
       turn = await call([
         { role: "system", content: ROUTER_PROMPT },
         { role: "user", content: "Tools: " + names.join(", ") + "\n\nRecent session:\n" + renderTranscript(req.messages, maxChars) }
-      ], [], {})
+      ], [], {}, null, null)
     } catch (err) {
       return null
     }

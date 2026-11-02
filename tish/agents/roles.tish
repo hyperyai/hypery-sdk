@@ -33,7 +33,7 @@ export fn isModelRole(v: any): boolean {
 // The role a profile's `model` names: "fast" is the swarm, "inherit" (or nothing) the lead, a role name itself, and
 // a model id none (the profile pinned a model).
 export fn roleOfProfileModel(model: string?): string? {
-  if (model === null || model === undefined || model === "" || model === "inherit") { return "lead" }
+  if ((model ?? null) === null || model === "" || model === "inherit") { return "lead" }
   if (model === "fast") { return "swarm" }
   if (isModelRole(model)) { return model }
   return null
@@ -60,7 +60,7 @@ export fn resolveRole(role: string, roles: RolePolicy, catalog: any[]?): RoleSpe
 // `roles` with `overrides` laid over it, role by role (an override may be a model id, or give only `model` or only
 // `effort`).
 export fn mergeRoles(roles: RolePolicy, overrides: any?): RolePolicy {
-  if (overrides === null || overrides === undefined || typeof overrides !== "object") { return roles }
+  if ((overrides ?? null) === null || typeof overrides !== "object") { return roles }
   let out = { ...roles }
   for (let r of MODEL_ROLES) {
     let o = overrides[r] ?? null
@@ -72,8 +72,8 @@ export fn mergeRoles(roles: RolePolicy, overrides: any?): RolePolicy {
 
 // The model call for one role: every request carries the spec's model and effort (a request's own win).
 export fn roleModel(callModel: CallModel, spec: RoleSpec): CallModel {
-  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest?): any {
-    let r = req !== null && req !== undefined && typeof req === "object" ? req : {}
+  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks? = null, signal: StopSignal? = null, req: ModelRequest? = null): any {
+    let r = (req ?? null) !== null && typeof req === "object" ? req : {}
     let merged = { ...r, model: r.model ?? spec.model, effort: r.effort ?? spec.effort ?? null }
     return await callModel(messages, tools, hooks, signal, merged)
   }

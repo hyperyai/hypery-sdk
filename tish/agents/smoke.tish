@@ -4,7 +4,8 @@
 import { delay } from "tish:timers"
 import { utf8Encode } from "tish:encoding"
 import {
-  createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL
+  createAgentRuntime, createStreamAccumulator, execOrchestrationTool, runSupervised, verdictOf, BUILTIN_PROFILES, REPORT_TOOL,
+  createOrchestration
 } from "./index.tish"
 
 fn turn(text: string, calls: any[]): any {
@@ -102,3 +103,14 @@ let byProfile = JSON.parse((await task({ subagent_type: "watcher", prompt: "look
 let overridden = JSON.parse((await task({ subagent_type: "watcher", prompt: "look around", run_in_background: false })).content)
 let plain = JSON.parse((await task({ subagent_type: "explorer", prompt: "look around" })).content)
 console.log("profile background: " + String(byProfile.status) + " " + String(overridden.ok) + " " + String(plain.ok))
+
+// Ultra's role calls (a role model on each request) and the advisor run on the VM too.
+let roleSeen = []
+let orch = createOrchestration(async fn(m: any[], t: any[], h: any, sg: any, req: any): any {
+  roleSeen.push(req.model)
+  return { text: "{\"verdict\":\"ok\",\"advice\":[]}", toolCalls: [] }
+}, { mode: "ultra" })
+await orch.callModel([{ role: "user", content: "hi" }], [], null, null)
+await orch.childModel("fast")([{ role: "user", content: "hi" }], [], null, null)
+let advice = await orch.advise({ trigger: "plan", messages: [{ role: "user", content: "hi" }], detail: null })
+console.log("ultra roles: " + roleSeen.join(" ") + " advice=" + String(advice !== null))

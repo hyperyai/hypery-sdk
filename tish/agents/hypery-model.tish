@@ -184,7 +184,7 @@ export fn createHyperyModel(opts: HyperyModelOptions): CallModel {
   let limit = typeof opts.maxRequestBytes === "number" ? opts.maxRequestBytes : MAX_REQUEST_BYTES
   let base = typeof opts.gatewayUrl === "string" && opts.gatewayUrl !== "" ? opts.gatewayUrl : "https://hypery.ai"
   if (base.endsWith("/")) { base = base.slice(0, base.length - 1) }
-  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest?): ModelTurn {
+  return async fn(messages: ChatMessage[], tools: ChatToolSpec[], hooks: ModelHooks?, signal: StopSignal?, req: ModelRequest? = null): ModelTurn {
     let token = await resolve(opts.token)
     if (typeof token !== "string" || token === "") { throw agentModelError("Sign in to Hypery to use the agent.", "ai_reauth", 401) }
     let hasReq = req !== null && typeof req === "object"

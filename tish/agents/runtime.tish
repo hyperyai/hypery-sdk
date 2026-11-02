@@ -281,7 +281,7 @@ export fn createAgentRuntime(host: AgentHost): AgentRuntime {
     let tools = host.childTools(ctx).concat([REPORT_SPEC])
     let childModel = typeof host.childModel === "function" ? host.childModel(ctx) : null
     if (typeof childModel !== "function" && orch !== null) {
-      childModel = orch.childModel(ctx.readOnly && (profile.model === null || profile.model === undefined) ? "fast" : (profile.model ?? null))
+      childModel = orch.childModel(ctx.readOnly && (profile.model ?? null) === null ? "fast" : (profile.model ?? null))
     }
     let budget = typeof profile.maxRounds === "number" && profile.maxRounds > 0 ? profile.maxRounds : (typeof host.maxRounds === "number" && host.maxRounds > 0 ? host.maxRounds : 30)
     let ok = true
