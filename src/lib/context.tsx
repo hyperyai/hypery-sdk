@@ -228,6 +228,7 @@ export function HyperyProvider({
         // Force account selection after logout to prevent auto-login
         prompt: justLoggedOut ? 'select_account' : undefined,
         provider: providerHint(options),
+        hideProviders: options?.hideProviders,
       });
 
       // Clear the flag
@@ -279,6 +280,7 @@ export function HyperyProvider({
         scopes,
         storage: config.storage || 'localStorage',
         provider: providerHint(options),
+        hideProviders: options?.hideProviders,
       });
       const expectedOrigin = new URL(config.redirectUri).origin;
       const result = await openPopup<{ code: string; state?: string | null }>({

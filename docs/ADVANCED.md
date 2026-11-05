@@ -56,6 +56,7 @@ and returns `{gatewayUrl}/api/oauth/authorize?...` with
 | `storage` | `'localStorage' \| 'sessionStorage' \| 'memory'` | Where the verifier is stored. |
 | `state` | `string?` | Random if omitted. Stored and verified on return. |
 | `provider` | `'google' \| 'github'` | Optional. Skips the hosted login page. |
+| `hideProviders` | `Array<'apple' \| 'google' \| 'github'>` | Optional. Leaves these off the hosted login and sign-up pages (e.g. `['apple']` in an App Store build that uses `signInWithAppleNative`). |
 | `prompt` | `'login' \| 'select_account' \| 'consent'` | Optional. |
 
 ```ts
@@ -65,6 +66,39 @@ window.location.href = await getAuthorizationUrl({
   clientId, redirectUri, gatewayUrl, scopes: ['read', 'ai:chat'], storage: 'localStorage',
 });
 ```
+
+### `signInWithAppleNative`
+
+`signInWithAppleNative({ clientId, gatewayUrl, scopes, redirectUri, storage?, requestCredential }): Promise<AuthTokens>`
+
+Native Sign in with Apple for an app's iOS / Mac App Store build. App Review
+(guideline 4) wants Sign in with Apple finished inside the app, not on the hosted
+page. The app shows Apple's own sheet; the SDK sends the identity token to Hypery
+(`/api/oauth/apple-native`) and exchanges the authorization code it answers with.
+Store the returned tokens yourself (`new TokenStorage(storage).saveTokens(tokens)`).
+
+`requestCredential` (type `RequestAppleCredential`) is your native bridge,
+`(nonce: string) => Promise<AppleCredential>`: show `ASAuthorizationController` with
+an `ASAuthorizationAppleIDProvider` request whose `nonce` is the string given (already
+SHA-256 hashed), and answer an `AppleCredential`:
+`{ identityToken, givenName?, familyName? }`, `{ cancelled: true }` when the person
+closes the sheet, or `{ unavailable: true }` when Apple refuses at once
+(`ASAuthorizationError.unknown`: the App ID lacks the capability).
+
+Setup per app: the Sign in with Apple capability on the App ID (and the
+`com.apple.developer.applesignin` entitlement in the build), and the bundle id in the
+app's App Store config on Hypery.
+
+Throws:
+
+| Error | When |
+| --- | --- |
+| `AppleSignInCancelled` | The person closed Apple's sheet. |
+| `AppleSignInUnavailable` | The app can't show the sheet; use the hosted sign-in. |
+| `AppleTwoFactorRequired` | The account uses two-factor. Call `error.complete(code, 'totp' \| 'backup')` for the tokens; it throws on a wrong code and can be retried. |
+| `Error` | Anything else, with a message to show (e.g. an existing account not linked to Apple). |
+
+`NativeSignInDialog` wraps all of this in a dialog. Options type: `SignInWithAppleNativeOptions`.
 
 ### `exchangeCodeForToken`
 

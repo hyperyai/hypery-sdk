@@ -26,6 +26,8 @@ export interface PopupAuthResult {
 export interface LoginOptions {
   /** Skip Hypery's hosted login page and go straight to this identity provider. */
   provider?: 'google' | 'github';
+  /** Leave these providers off the hosted pages, e.g. `['apple']` where `NativeSignInDialog` offers it natively. */
+  hideProviders?: Array<'apple' | 'google' | 'github'>;
 }
 
 /**
