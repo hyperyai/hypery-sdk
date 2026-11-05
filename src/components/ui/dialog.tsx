@@ -21,7 +21,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "hypery hy:fixed hy:inset-0 hy:z-50 hy:bg-overlay hy:backdrop-blur-[2px] hy:data-[state=open]:animate-hy-overlay-in",
+      "hypery hy:fixed hy:inset-0 hy:z-[var(--hy-z-modal,50)] hy:bg-overlay hy:backdrop-blur-[2px] hy:data-[state=open]:animate-hy-overlay-in",
       className
     )}
     {...props}
@@ -39,7 +39,7 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         // `hypery` here too: the content is portalled out of the component tree.
-        "hypery hy:fixed hy:left-1/2 hy:top-1/2 hy:z-50 hy:grid hy:w-[calc(100%-2rem)] hy:max-w-lg hy:-translate-x-1/2 hy:-translate-y-1/2 hy:gap-4 hy:rounded-2xl hy:bg-popover hy:p-6 hy:text-popover-foreground hy:shadow-xl hy:outline-none hy:data-[state=open]:animate-hy-content-in",
+        "hypery hy:fixed hy:left-1/2 hy:top-1/2 hy:z-[var(--hy-z-modal,50)] hy:grid hy:w-[calc(100%-2rem)] hy:max-w-lg hy:-translate-x-1/2 hy:-translate-y-1/2 hy:gap-4 hy:rounded-2xl hy:bg-popover hy:p-6 hy:text-popover-foreground hy:shadow-xl hy:outline-none hy:data-[state=open]:animate-hy-content-in",
         className
       )}
       {...props}
