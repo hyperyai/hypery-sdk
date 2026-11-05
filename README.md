@@ -161,18 +161,20 @@ screenshots in these docs are rendered this way.
 | Guide | Covers |
 | --- | --- |
 | [Provider and configuration](./docs/PROVIDER.md) | `HyperyProvider`, every `HyperyAuthConfig` option (`scopes`, `storage`, `interactionMode`, `onUnauthorized`, `onRestricted`), `BrandingConfig`, the context value |
-| [Components](./docs/COMPONENTS.md) | `SignIn`, `SignUp`, `SignInForm`, `AuthButton`, `AuthModal`, `ModernAuthForm`, `UserButton`, `UserProfile`, `WorkspaceSwitcher`, `SignedIn`, `SignedOut`, `RedirectToSignIn`, `Protect` (with screenshots) |
+| [Components](./docs/COMPONENTS.md) | `SignIn`, `SignUp`, `SignInForm`, `AuthButton`, `AuthModal`, `NativeSignInDialog`, `ModernAuthForm`, `UserButton`, `UserProfile`, `WorkspaceSwitcher`, `SignedIn`, `SignedOut`, `RedirectToSignIn`, `Protect` (with screenshots) |
 | [Hooks](./docs/HOOKS.md) | `useAuth`, `useHyperyAuth`, `useUser`, `useMemberships`, `useActiveWorkspace`, `setActiveWorkspace`, `useWallet`, `useBuyerWallet`, `useError` |
 | [Checkout](./docs/CHECKOUT.md) | `BuyButton`, `SubscribeButton`, `useCheckout`, `useMarketplace`, `useAppSubscription`, `planPriceCents`, popup vs redirect, annual billing |
 | [Errors](./docs/ERRORS.md) | Error codes, `parseError` and the `is*Error` guards, `formatTimeUntilReset`, `HyperyModals`, `RestrictionModal`, `SpendingLimitAlert`, `InsufficientCreditsAlert`, `ErrorBoundary` |
 | [Streaming](./docs/STREAMING.md) | `consumeSSEStream`, `parseSSEFrame`, `parseSSEError` |
-| [Advanced](./docs/ADVANCED.md) | `TokenStorage`, `getAuthorizationUrl`, `exchangeCodeForToken`, `refreshAccessToken`, `getUserInfo` |
+| [Sign in with Apple in App Store builds](./docs/APPLE.md) | Native Sign in with Apple (App Review guideline 4): setup (capability, entitlement, bundle ids on Hypery), the native bridge, `NativeSignInDialog`, `signInWithAppleNative`, `hideProviders`, two-factor, errors |
+| [Advanced](./docs/ADVANCED.md) | `TokenStorage`, `getAuthorizationUrl`, `exchangeCodeForToken`, `signInWithAppleNative`, `refreshAccessToken`, `getUserInfo` |
 | [Agents](./docs/AGENTS.md) | `@hyperyai/sdk/agents`: the agent loop, agents the main agent can message / resume / stop, plan → build → review, sessions that survive reloads, the Hypery model call, stores (browser, Node, Dune) |
 | [Type reference](./docs/TYPES.md) | Every exported type, grouped |
 
 ## Feature map
 
 - **Auth**: OAuth 2.0 + PKCE, redirect or popup login, single-flight token refresh, configurable token storage.
+- **Sign in with Apple in App Store builds**: Apple's native sheet handed to Hypery, with a ready dialog and two-factor, so iOS / Mac App Store builds pass App Review ([guide](./docs/APPLE.md)).
 - **Workspaces**: list teams/workspaces and switch the active one (`WorkspaceSwitcher`).
 - **AI credits**: mode-aware wallet (`useWallet`) with 1-click top-ups and card setup.
 - **Checkout**: log in, charge, add a card and retry in one call, as popups or redirects (`useCheckout`).
