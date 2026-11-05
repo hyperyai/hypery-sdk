@@ -127,6 +127,9 @@ prefixed `hy:`, there is no global reset, and only elements inside a component's
 `branding.primaryColor` on `AuthModal`, `ModernAuthForm`, `AuthButton`, `BuyButton` and `SubscribeButton` sets
 `--hy-primary` for that component only. The full token list is at the top of `src/styles.css`.
 
+**Stacking.** Modals (`AuthModal`, `NativeSignInDialog`, `RestrictionModal`) sit at `z-index: 50`. If your app has
+higher layers, raise them with `:root { --hy-z-modal: 10000; }` (set it outside `.hypery`, which doesn't define it).
+
 **Dark mode.** Components switch to the dark tokens under a `.dark` ancestor (the `class` strategy used by
 next-themes and Tailwind), on `.hypery.dark`, or from the OS preference. If your app has its own light/dark switch,
 put `class="light"` (or `data-theme="light"`) on `<html>` in light mode so the OS preference doesn't override it.

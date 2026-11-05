@@ -233,7 +233,7 @@ export function RestrictionModal({
     <div
       className={cn(
         ROOT,
-        'hy:fixed hy:inset-0 hy:z-50 hy:flex hy:items-center hy:justify-center hy:bg-overlay hy:p-4 hy:backdrop-blur-[2px] hy:animate-hy-overlay-in',
+        'hy:fixed hy:inset-0 hy:z-[var(--hy-z-modal,50)] hy:flex hy:items-center hy:justify-center hy:bg-overlay hy:p-4 hy:backdrop-blur-[2px] hy:animate-hy-overlay-in',
         overlayClassName,
       )}
     >

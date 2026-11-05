@@ -7,6 +7,8 @@
  *
  * Theming: override any `--hy-*` token on `.hypery` (or a parent), e.g.
  *   .hypery { --hy-primary: oklch(0.55 0.2 290); --hy-radius: 0.75rem; }
+ * Modals (AuthModal, NativeSignInDialog, RestrictionModal) sit at z-index 50; an app with
+ * higher layers raises them with `:root { --hy-z-modal: 10000; }` (set it outside `.hypery`).
  * Dark mode: a `.dark` ancestor, `.hypery.dark`, or the OS preference (opt out
  * with a `.light` ancestor or `data-theme="light"`).
  */
