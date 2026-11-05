@@ -17,15 +17,19 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | `AuthState` | `{ user, isAuthenticated, isLoading, error, isLoggingOut? }` (base of `AuthContextValue`). | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `PopupAuthResult` | `{ ok, blocked, cancelled }` from `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#popupauthresult) |
 | `PostLogoutRedirect` | `string \| false \| null \| (() => string \| false \| null \| void)` — where `logout()` goes. | [PROVIDER.md](./PROVIDER.md#postlogoutredirect) |
-| `LoginOptions` | `{ provider?: 'google' \| 'github' }` for `login()` / `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
+| `LoginOptions` | `{ provider?: 'google' \| 'github', hideProviders?: Array<'apple' \| 'google' \| 'github'> }` for `login()` / `loginPopup()`. | [PROVIDER.md](./PROVIDER.md#context-value-authcontextvalue) |
 | `User` | `{ id, email, name, image? }`. | [HOOKS.md](./HOOKS.md#useuser) |
 | `AuthTokens` | `{ accessToken, refreshToken, expiresIn, tokenType }`. | [ADVANCED.md](./ADVANCED.md) |
+| `AppleCredential` | What the app's native Apple sheet answered: `{ identityToken?, givenName?, familyName?, cancelled?, unavailable? }`. | [APPLE.md](./APPLE.md#the-native-bridge) |
+| `RequestAppleCredential` | `(nonce: string) => Promise<AppleCredential>`: the app's native bridge. | [APPLE.md](./APPLE.md#the-native-bridge) |
+| `SignInWithAppleNativeOptions` | Options of `signInWithAppleNative`. | [ADVANCED.md](./ADVANCED.md#signinwithapplenative) |
 
 ## Component props
 
 | Type | Component | Details |
 | --- | --- | --- |
 | `AuthButtonProps` | `AuthButton` | [COMPONENTS.md](./COMPONENTS.md#authbutton) |
+| `NativeSignInDialogProps` | `NativeSignInDialog` | [COMPONENTS.md](./COMPONENTS.md#nativesignindialog) |
 | `AuthModalProps` | `AuthModal` | [COMPONENTS.md](./COMPONENTS.md#authmodal) |
 | `ModernAuthFormProps` | `ModernAuthForm` | [COMPONENTS.md](./COMPONENTS.md#modernauthform) |
 | `WorkspaceSwitcherProps` | `WorkspaceSwitcher` | [COMPONENTS.md](./COMPONENTS.md#workspaceswitcher) |

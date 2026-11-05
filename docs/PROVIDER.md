@@ -124,7 +124,7 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 | `isLoading` | `boolean` | True while the session / callback is being resolved. |
 | `error` | `string \| null` | Last auth error message. |
 | `isLoggingOut` | `boolean \| undefined` | True from `logout()` until the page reloads. |
-| `login` | `(options?: LoginOptions) => Promise<void>` | Redirects to the Hypery authorize page. `options.provider` (`'google' \| 'github'`) skips the hosted login page. After a `logout()` it adds `prompt=select_account` once. |
+| `login` | `(options?: LoginOptions) => Promise<void>` | Redirects to the Hypery authorize page. `options.provider` (`'google' \| 'github'`) skips the hosted login page; `options.hideProviders` (e.g. `['apple']`) leaves providers off it ([Apple guide](./APPLE.md)). After a `logout()` it adds `prompt=select_account` once. |
 | `loginPopup` | `(options?: LoginOptions) => Promise<PopupAuthResult>` | Log in via popup. Resolves `{ ok, blocked, cancelled }`. |
 | `signUp` | `() => Promise<void>` | Same as `login` but always with `prompt=select_account`. |
 | `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then navigates to `postLogoutRedirect` (`'/'` by default). |

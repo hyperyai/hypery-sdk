@@ -69,6 +69,8 @@ window.location.href = await getAuthorizationUrl({
 
 ### `signInWithAppleNative`
 
+> Setup, the native bridge and a full example: [Sign in with Apple in App Store builds](./APPLE.md).
+
 `signInWithAppleNative({ clientId, gatewayUrl, scopes, redirectUri, storage?, requestCredential }): Promise<AuthTokens>`
 
 Native Sign in with Apple for an app's iOS / Mac App Store build. App Review

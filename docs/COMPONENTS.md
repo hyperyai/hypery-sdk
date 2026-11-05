@@ -354,6 +354,8 @@ then `node scripts/screenshots.mjs <path-to-hypery-sdk>/docs/images`. It writes 
 
 ## NativeSignInDialog
 
+> Setup and the native bridge: [Sign in with Apple in App Store builds](./APPLE.md).
+
 How to sign in, in an app's iOS / Mac App Store build: **Sign in with Apple** natively
 (see `signInWithAppleNative`), or **Other sign-in methods** (your hosted sign-in,
 normally with `hideProviders: ['apple']`). It handles a cancelled Apple sheet, an app
