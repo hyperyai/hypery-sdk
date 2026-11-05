@@ -11,7 +11,7 @@ dark, from the `/gallery` page of the `auth-demo` example in
 > Back to [README](../README.md) · Checkout buttons: [CHECKOUT.md](./CHECKOUT.md) · Error UI: [ERRORS.md](./ERRORS.md)
 
 Contents: [SignIn](#signin) · [SignUp](#signup) · [SignInForm](#signinform) ·
-[AuthButton](#authbutton) · [AuthModal](#authmodal) · [ModernAuthForm](#modernauthform) ·
+[AuthButton](#authbutton) · [AuthModal](#authmodal) · [NativeSignInDialog](#nativesignindialog) · [ModernAuthForm](#modernauthform) ·
 [UserButton](#userbutton) · [UserProfile](#userprofile) · [WorkspaceSwitcher](#workspaceswitcher) ·
 [Control components](#control-components)
 
@@ -351,3 +351,39 @@ It has no scope/permission prop.
 `HyperyTestProvider` with sample data. To regenerate: in `auth-demo`, run `npm run build && npm start`,
 then `node scripts/screenshots.mjs <path-to-hypery-sdk>/docs/images`. It writes `<name>-light.png` and
 `<name>-dark.png` at 2x for every `[data-shot]` frame.</sub>
+
+## NativeSignInDialog
+
+How to sign in, in an app's iOS / Mac App Store build: **Sign in with Apple** natively
+(see `signInWithAppleNative`), or **Other sign-in methods** (your hosted sign-in,
+normally with `hideProviders: ['apple']`). It handles a cancelled Apple sheet, an app
+without the Sign in with Apple capability (runs `onOtherMethods`), and two-factor
+accounts (asks for the authenticator or a backup code).
+
+```tsx
+import { NativeSignInDialog, signInWithAppleNative, TokenStorage, useHyperyAuth } from '@hyperyai/sdk';
+
+const { login } = useHyperyAuth();
+
+<NativeSignInDialog
+  isOpen={open}
+  onClose={() => setOpen(false)}
+  signInWithApple={() => signInWithAppleNative({ clientId, gatewayUrl, scopes, redirectUri, requestCredential })}
+  onSignedIn={(tokens) => { new TokenStorage('localStorage').saveTokens(tokens); location.reload(); }}
+  onOtherMethods={() => login({ hideProviders: ['apple'] })}
+  branding={{ appName: 'Acme' }}
+/>
+```
+
+`NativeSignInDialogProps`:
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `isOpen` | `boolean` | Whether the dialog is open. |
+| `onClose` | `() => void` | Dismissed (not while a sign-in runs). |
+| `signInWithApple` | `() => Promise<AuthTokens>` | Runs native Sign in with Apple. |
+| `onSignedIn` | `(tokens: AuthTokens) => void \| Promise<void>` | Store the tokens and refresh the session. |
+| `onOtherMethods` | `() => Promise<unknown> \| void` | The app's other sign-in; resolves once signed in. |
+| `signup` | `boolean?` | Sign-up wording. |
+| `branding` | `{ appName?, primaryColor? }` | Optional. |
+

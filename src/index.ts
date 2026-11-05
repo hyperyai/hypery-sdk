@@ -77,6 +77,8 @@ export { AuthButton } from './components/AuthButton.js';
 export type { AuthButtonProps } from './components/AuthButton.js';
 export { ModernAuthForm } from './components/ModernAuthForm.js';
 export type { ModernAuthFormProps } from './components/ModernAuthForm.js';
+export { NativeSignInDialog } from './components/NativeSignInDialog.js';
+export type { NativeSignInDialogProps } from './components/NativeSignInDialog.js';
 export { WorkspaceSwitcher } from './components/WorkspaceSwitcher.js';
 export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher.js';
 
@@ -147,6 +149,17 @@ export {
   refreshAccessToken,
   getUserInfo,
 } from './lib/oauth.js';
+export {
+  signInWithAppleNative,
+  AppleSignInCancelled,
+  AppleSignInUnavailable,
+  AppleTwoFactorRequired,
+} from './lib/native-apple.js';
+export type {
+  AppleCredential,
+  RequestAppleCredential,
+  SignInWithAppleNativeOptions,
+} from './lib/native-apple.js';
 
 // Error Utilities
 export {

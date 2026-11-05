@@ -93,6 +93,11 @@ function txRemove(storage: StorageType, key: string): void {
   else store.removeItem(key);
 }
 
+/** Store the PKCE verifier for a code obtained outside `getAuthorizationUrl` (native Sign in with Apple). @internal */
+export function setOAuthVerifier(storage: StorageType, verifier: string): void {
+  txSet(storage, VERIFIER_KEY, verifier);
+}
+
 /** Remove the stored PKCE verifier and `state` (after an exchange or on logout). */
 export function clearOAuthTransaction(storage: StorageType): void {
   txRemove(storage, VERIFIER_KEY);
@@ -125,6 +130,11 @@ export async function getAuthorizationUrl(config: {
   prompt?: 'login' | 'select_account' | 'consent';
   /** Skip the hosted login page and go straight to this identity provider. */
   provider?: 'google' | 'github';
+  /**
+   * Leave these providers off the hosted login and sign-up pages, e.g. `['apple']` in an
+   * App Store build that offers Sign in with Apple natively (`signInWithAppleNative`).
+   */
+  hideProviders?: Array<'apple' | 'google' | 'github'>;
 }): Promise<string> {
   const { verifier, challenge } = await generatePKCE();
   const state = config.state || generateRandomString(16);
@@ -149,6 +159,9 @@ export async function getAuthorizationUrl(config: {
   }
   if (config.provider) {
     params.set('provider', config.provider);
+  }
+  if (config.hideProviders?.length) {
+    params.set('hide_providers', config.hideProviders.join(','));
   }
 
   return `${config.gatewayUrl}/api/oauth/authorize?${params.toString()}`;
