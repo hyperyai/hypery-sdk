@@ -161,6 +161,24 @@ export type {
   SignInWithAppleNativeOptions,
 } from './lib/native-apple.js';
 
+// Incremental OAuth scopes
+export {
+  InsufficientScopeError,
+  isInsufficientScopeError,
+  parseInsufficientScope,
+  throwIfInsufficientScope,
+  requestScopes,
+  withScope,
+  mergeScopes,
+  parseScopeString,
+} from './lib/scopes.js';
+export type {
+  OpenAuthUrl,
+  ScopeRequestMode,
+  RequestScopesOptions,
+  RequestScopesResult,
+} from './lib/scopes.js';
+
 // Error Utilities
 export {
   parseError,
