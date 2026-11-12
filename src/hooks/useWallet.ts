@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useHyperyAuth } from '../lib/context';
 
-export type BillingMode = 'metered' | 'prepaid';
+export type BillingMode = 'vag_passthrough' | 'metered' | 'prepaid';
 
 export interface WalletTier {
   name: string;
@@ -25,8 +25,28 @@ export interface WalletTier {
   popular?: boolean;
 }
 
+export interface WalletReadiness {
+  ready: boolean;
+  plan?: string | null;
+  hasPaymentMethod?: boolean;
+  hasMeteredSubscription?: boolean;
+  setupCompletedAt?: string | null;
+  setupUrl?: string;
+  reasons?: string[];
+}
+
+export interface BillingTeamInfo {
+  id: string;
+  name: string;
+  slug: string;
+  source?: string;
+}
+
 export interface WalletState {
   mode: BillingMode;
+  /** Team this wallet / add-card flow targets. */
+  team?: BillingTeamInfo;
+  readiness?: WalletReadiness;
   balance: {
     current: number;
     reserved: number;
@@ -37,7 +57,8 @@ export interface WalletState {
   autoTopUp: { enabled: boolean; threshold?: number; amount?: number };
   lowBalance: { isLow: boolean; threshold: number; current: number };
   topupTiers: WalletTier[];
-  settingsUrls: { billing: string; topup: string; addPaymentMethod: string };
+  settingsUrls: { billing: string; topup: string; addPaymentMethod: string; setup?: string };
+  meteredRateUsdPerToken?: number;
 }
 
 export interface UseWalletReturn {
@@ -59,9 +80,14 @@ function resolveGatewayUrl(explicit?: string): string {
   );
 }
 
-export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
+export function useWallet(opts: {
+  gatewayUrl?: string;
+  /** Forwarded as x-hypery-active-organization-id so card setup targets this team. */
+  activeOrganizationId?: string | null;
+} = {}): UseWalletReturn {
   const { isAuthenticated, getAccessToken } = useHyperyAuth();
   const gatewayUrl = resolveGatewayUrl(opts.gatewayUrl);
+  const activeOrganizationId = opts.activeOrganizationId;
 
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,9 +107,11 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
         setWallet(null);
         return;
       }
-      const res = await fetch(`${gatewayUrl}/api/wallet/state`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (activeOrganizationId) {
+        headers['x-hypery-active-organization-id'] = activeOrganizationId;
+      }
+      const res = await fetch(`${gatewayUrl}/api/wallet/state`, { headers });
       if (!res.ok) throw new Error(`Wallet state request failed: ${res.status}`);
       const body = (await res.json()) as WalletState & { success: boolean };
       setWallet(body);
@@ -92,7 +120,7 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, getAccessToken, gatewayUrl]);
+  }, [isAuthenticated, getAccessToken, gatewayUrl, activeOrganizationId]);
 
   useEffect(() => {
     void reload();
@@ -102,9 +130,16 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
     async (usd: number) => {
       const token = await getAccessToken();
       if (!token) throw new Error('Not authenticated');
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      if (activeOrganizationId) {
+        headers['x-hypery-active-organization-id'] = activeOrganizationId;
+      }
       const res = await fetch(`${gatewayUrl}/api/wallet/topup`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ amount: usd }),
       });
       const body = await res.json().catch(() => ({}));
@@ -113,16 +148,23 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
       }
       await reload();
     },
-    [getAccessToken, gatewayUrl, reload]
+    [getAccessToken, gatewayUrl, reload, activeOrganizationId]
   );
 
   const addPaymentMethod = useCallback(async (): Promise<boolean> => {
     const token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
 
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+    if (activeOrganizationId) {
+      headers['x-hypery-active-organization-id'] = activeOrganizationId;
+    }
     const res = await fetch(`${gatewayUrl}/api/payments/stripe/checkout-setup`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({}),
     });
     const body = await res.json().catch(() => ({}));
@@ -164,7 +206,7 @@ export function useWallet(opts: { gatewayUrl?: string } = {}): UseWalletReturn {
         if (popup && popup.closed) void finish(false);
       }, 700);
     });
-  }, [getAccessToken, gatewayUrl, reload]);
+  }, [getAccessToken, gatewayUrl, reload, activeOrganizationId]);
 
   return { wallet, isLoading, error, reload, addFunds, addPaymentMethod };
 }

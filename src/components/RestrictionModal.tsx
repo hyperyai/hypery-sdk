@@ -19,16 +19,26 @@ export interface RestrictionError {
   [key: string]: any;
 }
 
-type BillingMode = 'metered' | 'prepaid';
+type BillingMode = 'vag_passthrough' | 'metered' | 'prepaid';
+
+export interface BillingTeamInfo {
+  id: string;
+  name: string;
+  slug: string;
+  source?: string;
+}
 
 interface WalletState {
   mode: BillingMode;
+  /** Team this wallet / add-card flow targets. Always shown in the modal. */
+  team?: BillingTeamInfo;
+  readiness?: { ready: boolean; setupUrl?: string; hasPaymentMethod?: boolean };
   balance: { current: number; reserved: number; monthlySpent: number; monthlyLimit: number };
   paymentMethod: { exists: boolean; last4?: string; brand?: string };
   autoTopUp: { enabled: boolean; threshold?: number; amount?: number };
   lowBalance: { isLow: boolean; threshold: number; current: number };
   topupTiers: Array<{ name: string; usdAmount: number; credits: number; bonus: number; popular?: boolean }>;
-  settingsUrls: { billing: string; topup: string; addPaymentMethod: string };
+  settingsUrls: { billing: string; topup: string; addPaymentMethod: string; setup?: string };
 }
 
 interface RestrictionModalProps {
@@ -42,6 +52,12 @@ interface RestrictionModalProps {
   appId?: string;
   gatewayUrl: string;
   getAccessToken: () => Promise<string | null>;
+  /**
+   * Active Hypery organization / team id. Sent as
+   * `x-hypery-active-organization-id` so wallet + card setup target that team
+   * (and the UI can label it), matching Dune / inference billing.
+   */
+  activeOrganizationId?: string | null;
   onClose: () => void;
   onRetry?: () => void;
   /** Called after funds/card are successfully added. */
@@ -67,6 +83,7 @@ export function RestrictionModal({
   appId,
   gatewayUrl,
   getAccessToken,
+  activeOrganizationId,
   onClose,
   onRetry,
   onFunded,
@@ -90,8 +107,11 @@ export function RestrictionModal({
       'Content-Type': 'application/json',
     };
     if (resolvedClientId) headers['X-Hypery-Client-Id'] = resolvedClientId;
+    if (activeOrganizationId) {
+      headers['x-hypery-active-organization-id'] = activeOrganizationId;
+    }
     return headers;
-  }, [getAccessToken, resolvedClientId]);
+  }, [getAccessToken, resolvedClientId, activeOrganizationId]);
 
   const loadWallet = useCallback(async () => {
     try {
@@ -201,12 +221,19 @@ export function RestrictionModal({
 
   const openSettings = (path?: string) => {
     if (!path) return;
+    if (/^https?:\/\//i.test(path)) {
+      window.open(path, '_blank');
+      return;
+    }
     window.open(`${gatewayUrl}${path}`, '_blank');
   };
 
   const isSpendingLimit = error.code === 'SPENDING_LIMIT_EXCEEDED';
   const isPaymentDeclined = error.code === 'PAYMENT_DECLINED';
   const isPaymentMethodRequired = error.code === 'PAYMENT_METHOD_REQUIRED';
+
+  const mode = wallet?.mode;
+  const hasCard = !!wallet?.paymentMethod?.exists;
 
   const title = funded
     ? 'You’re all set'
@@ -216,10 +243,9 @@ export function RestrictionModal({
     ? 'Payment failed'
     : isSpendingLimit
     ? 'Spending limit reached'
+    : mode === 'vag_passthrough'
+    ? 'Payment required'
     : 'Add funds';
-
-  const mode = wallet?.mode;
-  const hasCard = !!wallet?.paymentMethod?.exists;
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm ${overlayClassName}`}>
@@ -237,6 +263,32 @@ export function RestrictionModal({
         <div className="p-6">
           <h2 className="text-2xl font-bold text-center mb-4 text-white">{title}</h2>
 
+          {wallet?.team && (
+            <div
+              className="mb-4 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-center"
+              data-testid="billing-team-banner"
+            >
+              <div className="text-[11px] uppercase tracking-wide text-blue-300/80">
+                Billing team
+              </div>
+              <div className="text-sm font-semibold text-white">
+                {wallet.team.name}
+                {wallet.team.slug && wallet.team.slug !== wallet.team.name ? (
+                  <span className="ml-1 font-normal text-gray-400">@{wallet.team.slug}</span>
+                ) : null}
+              </div>
+              {wallet.team.source ? (
+                <div className="mt-0.5 text-[11px] text-gray-500">
+                  {wallet.team.source === 'personal'
+                    ? 'Personal workspace'
+                    : wallet.team.source === 'header_org'
+                      ? 'Selected organization'
+                      : wallet.team.source.replace(/_/g, ' ')}
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
@@ -249,13 +301,30 @@ export function RestrictionModal({
               {/* Wallet summary */}
               {wallet && (
                 <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400">Available credits</span>
-                    <span className="text-2xl font-bold text-white">{wallet.balance.current}</span>
-                  </div>
+                  {mode === 'vag_passthrough' ? (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Billing</span>
+                      <span className="text-sm font-medium text-white">
+                        {wallet.paymentMethod.exists
+                          ? 'Card on file · Stripe usage'
+                          : wallet.readiness?.ready === false
+                            ? 'Setup required'
+                            : 'Add a card to enable usage'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Available credits</span>
+                      <span className="text-2xl font-bold text-white">{wallet.balance.current}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-xs text-gray-500">
-                      {mode === 'metered' ? 'Pay-as-you-go billing' : 'Prepaid balance'}
+                      {mode === 'vag_passthrough'
+                        ? 'Usage billed via Stripe'
+                        : mode === 'metered'
+                          ? 'Pay-as-you-go billing'
+                          : 'Prepaid balance'}
                     </span>
                     {wallet.paymentMethod.exists && (
                       <span className="text-xs text-gray-500">
@@ -307,16 +376,37 @@ export function RestrictionModal({
                       </button>
                     )}
                   </>
-                ) : mode === 'metered' || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
-                  // Metered, or no card on file → capture/update a card first.
+                ) : mode === 'vag_passthrough' || mode === 'metered' || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
+                  // Metered / VAG, or no card on file → capture/update a card (or open setup).
                   <>
-                    <button
-                      onClick={addPaymentMethod}
-                      disabled={busy}
-                      className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-lg transition-colors font-medium"
-                    >
-                      {busy ? 'Opening secure checkout…' : hasCard ? 'Update payment method' : 'Add a payment method'}
-                    </button>
+                    {mode === 'vag_passthrough' &&
+                    wallet?.readiness?.ready === false &&
+                    (wallet.readiness.setupUrl || wallet.settingsUrls.setup) ? (
+                      <button
+                        onClick={() =>
+                          openSettings(wallet.readiness?.setupUrl || wallet.settingsUrls.setup)
+                        }
+                        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors font-medium"
+                      >
+                        Complete billing setup
+                      </button>
+                    ) : (
+                      <button
+                        onClick={addPaymentMethod}
+                        disabled={busy}
+                        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-lg transition-colors font-medium"
+                      >
+                        {busy
+                          ? 'Opening secure checkout…'
+                          : hasCard
+                            ? wallet?.team?.name
+                              ? `Update card for ${wallet.team.name}`
+                              : 'Update payment method'
+                            : wallet?.team?.name
+                              ? `Add card for ${wallet.team.name}`
+                              : 'Add a payment method'}
+                      </button>
+                    )}
                     {mode === 'metered' && (
                       <p className="text-xs text-gray-500 text-center">
                         You’ll be billed automatically as you use the service.

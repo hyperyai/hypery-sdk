@@ -21,6 +21,11 @@ export interface HyperyModalsProps {
    * request that was blocked). The restriction is cleared automatically.
    */
   onRetry?: () => void;
+  /**
+   * Active Hypery organization / team id. Forwarded to RestrictionModal so the
+   * add-card popup always targets (and labels) that team.
+   */
+  activeOrganizationId?: string | null;
 }
 
 /**
@@ -31,14 +36,15 @@ export interface HyperyModalsProps {
  *   - a 402/429 billing restriction → `<RestrictionModal>` (add funds / add card)
  *   - a 401 that survives a silent-refresh retry → `<AuthModal>` (re-auth)
  *
- * All wiring (clientId, gatewayUrl, getAccessToken, open/close) is read from
- * context, so this component takes no required props.
+ * Pass `activeOrganizationId` when the host app has a selected team so the card
+ * popup bills that team and shows its name.
  */
 export function HyperyModals({
   branding,
   showSocial,
   showEmailPassword,
   onRetry,
+  activeOrganizationId,
 }: HyperyModalsProps = {}) {
   const {
     clientId,
@@ -68,6 +74,7 @@ export function HyperyModals({
         clientId={clientId}
         gatewayUrl={gatewayUrl}
         getAccessToken={getAccessToken}
+        activeOrganizationId={activeOrganizationId}
         onClose={clearRestriction}
         onRetry={onRetry}
       />
