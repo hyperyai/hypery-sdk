@@ -63,7 +63,7 @@
     "test": "bun test src",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build",
-    "typecheck:examples": "tsc -p examples/agents/tsconfig.json",
+    "typecheck:examples": "tsc -p examples/agents/tsconfig.json && tsc -p examples/scopes/tsconfig.json",
     "build:core": "tish build tish/agents/index.tish --target js --format esm --types -o src/agents/core",
     "pretest": "npm run build:core",
     "test:tish": "node scripts/test-tish.mjs"
