@@ -116,23 +116,29 @@ import { HyperyProvider, HyperyModals, useAuth } from '@hyperyai/sdk';
 | `showSocial` | `boolean` | `AuthModal` default (`true`) | Forwarded to `AuthModal`. |
 | `showEmailPassword` | `boolean` | `AuthModal` default (`false`) | Forwarded to `AuthModal`. |
 | `onRetry` | `() => void` | none | Called by the funds modal's Continue / Try again buttons. |
+| `activeOrganizationId` | `string \| null` | none | The HyperY team paying, if your app lets people pick one; the funds modal shows and links to that team's billing. |
 
 The props type is exported as `HyperyModalsProps`.
 
 ## `RestrictionModal`
 
-Mode-aware funds modal. When `error` is set it loads `GET /api/wallet/state`
-and shows:
+Mode-aware funds modal. Adding a card or credits happens on HyperY's own hosted billing pages, opened in a popup
+and signed in as the person, so **your app needs no billing scope** (not `billing:write`, which apps can't be granted,
+and not even `billing:read`). The page comes from the error itself (HyperY's `402`s carry `url`, the hosted page for
+the paying team), else from the wallet's `settingsUrls`; `billingPageUrl(kind, error, wallet, gatewayUrl)` is the same
+choice as a function.
+
+If the token can read the wallet (`billing:read`), the modal also shows the balance and card on file and picks:
 
 | Light | Dark |
 |---|---|
 | <img src="./images/restriction-modal-light.png" alt="RestrictionModal (light)" width="360"> | <img src="./images/restriction-modal-dark.png" alt="RestrictionModal (dark)" width="360"> |
 
 - spending limit: "Manage spending limits" (opens `settingsUrls.billing` in a new tab) and "Try again";
-- metered or `vag_passthrough` mode, no card, `PAYMENT_METHOD_REQUIRED` or `PAYMENT_DECLINED`: "Add / Update payment method" (Stripe-hosted setup in a popup);
-- prepaid with a card: 1-click "$10 / $25 / $50" top-ups and "Other amount…" (opens `settingsUrls.topup`).
+- metered or `vag_passthrough` mode, no card, `PAYMENT_METHOD_REQUIRED` or `PAYMENT_DECLINED`: "Add / Update payment method" (HyperY's add-card page);
+- prepaid with a card: "Add credits" (HyperY's top-up page).
 
-After a successful top-up it shows "You're all set" with a Continue button. Renders nothing when `error` is `null`.
+When the person comes back from HyperY it shows "You're all set" with a Continue button (which calls `onRetry`). Renders nothing when `error` is `null`.
 
 ```tsx
 import { RestrictionModal, useError, useAuth } from '@hyperyai/sdk';
@@ -156,6 +162,7 @@ const { clientId, gatewayUrl, getAccessToken } = useAuth();
 | `gatewayUrl` | `string` | required | Hypery base URL. |
 | `getAccessToken` | `() => Promise<string \| null>` | required | Usually from `useAuth()`. |
 | `onClose` | `() => void` | required | Close handler. |
+| `activeOrganizationId` | `string \| null` | none | The paying team; sent as `x-hypery-active-organization-id` when reading the wallet. |
 | `clientId` | `string` | none | Sent as `X-Hypery-Client-Id`. |
 | `appId` | `string` | none | Deprecated alias for `clientId`. |
 | `onRetry` | `() => void` | none | Retry the blocked request. |

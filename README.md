@@ -176,7 +176,7 @@ screenshots in these docs are rendered this way.
 - **Auth**: OAuth 2.0 + PKCE, redirect or popup login, single-flight token refresh, configurable token storage.
 - **Sign in with Apple in App Store builds**: Apple's native sheet handed to Hypery, with a ready dialog and two-factor, so iOS / Mac App Store builds pass App Review ([guide](./docs/APPLE.md)).
 - **Workspaces**: list teams/workspaces and switch the active one (`WorkspaceSwitcher`).
-- **AI credits**: mode-aware wallet (`useWallet`) with 1-click top-ups and card setup.
+- **AI credits**: mode-aware wallet (`useWallet`); adding a card or credits opens HyperY's hosted billing pages, so apps need no billing scope.
 - **Checkout**: log in, charge, add a card and retry in one call, as popups or redirects (`useCheckout`).
 - **Subscriptions**: sell your app's plans with monthly or annual billing and expiring app-scoped credit grants (`useAppSubscription`).
 - **Errors**: one classified `ParsedError` for HTTP and streaming failures, plus turnkey modals.

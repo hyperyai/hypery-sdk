@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import type { WalletState } from '../hooks/useWallet.js';
-import { errorMessageFromBody } from '../lib/gateway.js';
 import { Check, CreditCard, Gauge, X } from 'lucide-react';
 import { cn } from '../lib/utils.js';
 import { ErrorNote, ROOT, Spinner, buttonSizes, buttonVariants } from './ui/primitives.js';
@@ -28,6 +27,27 @@ export interface RestrictionError {
   [key: string]: any;
 }
 
+/** A hosted HyperY billing page. */
+export type BillingPage = 'addPaymentMethod' | 'topup' | 'billing';
+
+/**
+ * Where to send someone to fix a billing restriction: HyperY's hosted page, signed in as them, so the app needs no
+ * billing scope. The error's own `url` (HyperY's 402s carry the hosted page for the paying team) wins for adding a
+ * card or credits; the wallet's `settingsUrls` fill in, and win for the general billing page.
+ */
+export function billingPageUrl(
+  kind: BillingPage,
+  error: { [key: string]: unknown } | null,
+  wallet: Pick<WalletState, 'settingsUrls'> | null,
+  gatewayUrl: string,
+): string | null {
+  const fromError = typeof error?.url === 'string' && error.url ? error.url : null;
+  const path = wallet?.settingsUrls?.[kind] ?? null;
+  const url = kind === 'billing' ? path ?? fromError : fromError ?? path;
+  if (!url) return null;
+  return /^https?:\/\//i.test(url) ? url : `${gatewayUrl.replace(/\/+$/, '')}${url}`;
+}
+
 interface RestrictionModalProps {
   /** Error to resolve; `null` hides the modal. */
   error: RestrictionError | null;
@@ -42,6 +62,11 @@ interface RestrictionModalProps {
   gatewayUrl: string;
   /** Usually `useAuth().getAccessToken`. */
   getAccessToken: () => Promise<string | null>;
+  /**
+   * The HyperY team paying, when the app lets people pick one. Sent as `x-hypery-active-organization-id` so the
+   * wallet shown is that team's. Omit for the person's own account.
+   */
+  activeOrganizationId?: string | null;
   /** Close handler. */
   onClose: () => void;
   /** Retry the blocked request. */
@@ -52,16 +77,17 @@ interface RestrictionModalProps {
   overlayClassName?: string;
 }
 
-const QUICK_AMOUNTS = [10, 25, 50];
-
 /**
  * Mode-aware restriction / funds modal.
  *
- * Reads the team's wallet state (GET /api/wallet/state) and renders the CTA that
- * matches the billing lever:
- *   - metered + no card → "Add a payment method" (Stripe-hosted Checkout)
- *   - metered + declined → "Update payment method"
- *   - prepaid           → 1-click "Add $X" (charges the saved card in place)
+ * Adding a card or credits happens on HyperY's own hosted billing pages, opened in a popup and signed in as the
+ * person. So the app needs no billing scope: no `billing:write` (apps can't be granted it), and not even
+ * `billing:read`. The page comes from the error itself (HyperY's 402s carry `url`, the hosted page for the paying
+ * team), else from the wallet's `settingsUrls`.
+ *
+ * When the token can read the wallet (`billing:read`), it also shows the balance and card, and picks the action:
+ *   - pay-as-you-go, no card, card required or declined → "Add / Update payment method"
+ *   - prepaid with a card → "Add credits"
  */
 export function RestrictionModal({
   error,
@@ -69,6 +95,7 @@ export function RestrictionModal({
   appId,
   gatewayUrl,
   getAccessToken,
+  activeOrganizationId,
   onClose,
   onRetry,
   onFunded,
@@ -79,7 +106,6 @@ export function RestrictionModal({
   const resolvedClientId = clientId ?? appId;
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [funded, setFunded] = useState(false);
@@ -87,24 +113,24 @@ export function RestrictionModal({
   const authHeaders = useCallback(async () => {
     const token = await getAccessToken();
     if (!token) throw new Error('Not authenticated');
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (resolvedClientId) headers['X-Hypery-Client-Id'] = resolvedClientId;
+    if (activeOrganizationId) headers['x-hypery-active-organization-id'] = activeOrganizationId;
     return headers;
-  }, [getAccessToken, resolvedClientId]);
+  }, [getAccessToken, resolvedClientId, activeOrganizationId]);
 
-  const loadWallet = useCallback(async () => {
+  // Optional: the balance and card on file. Needs `billing:read`; without it the modal still works off the
+  // error's own `url`, so a failed read isn't shown as an error.
+  const loadWallet = useCallback(async (): Promise<WalletState | null> => {
     try {
       setIsLoading(true);
-      setFetchError(null);
-      const headers = await authHeaders();
-      const res = await fetch(`${gatewayUrl}/api/wallet/state`, { headers });
-      if (!res.ok) throw new Error(`Failed to load wallet (${res.status})`);
-      setWallet((await res.json()) as WalletState);
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Failed to load wallet');
+      const res = await fetch(`${gatewayUrl}/api/wallet/state`, { headers: await authHeaders() });
+      const next = res.ok ? ((await res.json()) as WalletState) : null;
+      setWallet(next);
+      return next;
+    } catch {
+      setWallet(null);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -112,55 +138,36 @@ export function RestrictionModal({
 
   useEffect(() => {
     if (!error) return;
+    setFunded(false);
+    setActionError(null);
     void loadWallet();
   }, [error, loadWallet]);
 
-  // 1-click: charge the saved card and credit the team.
-  const addFunds = useCallback(
-    async (usd: number) => {
+  const hostedUrl = (kind: BillingPage) => billingPageUrl(kind, error, wallet, gatewayUrl);
+
+  // Open a hosted page in a popup and wait for it: HyperY posts `hypery:payment-method` when a card is added;
+  // closing the popup also ends the wait. Afterwards, re-read the wallet (if we can) and offer Continue.
+  const openHosted = useCallback(
+    async (url: string | null) => {
+      if (!url) {
+        setActionError('Billing isn’t available for this account right now.');
+        return;
+      }
       setBusy(true);
       setActionError(null);
-      try {
-        const headers = await authHeaders();
-        const res = await fetch(`${gatewayUrl}/api/wallet/topup`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ amount: usd }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok || !body?.success) {
-          throw new Error(errorMessageFromBody(body, `Top-up failed (${res.status})`));
-        }
-        await loadWallet();
-        setFunded(true);
-        onFunded?.();
-      } catch (err) {
-        setActionError(err instanceof Error ? err.message : 'Top-up failed');
-      } finally {
+      const popup = window.open(url, 'hypery-billing', 'width=480,height=760');
+      if (!popup) {
+        window.open(url, '_blank');
         setBusy(false);
+        return;
       }
-    },
-    [authHeaders, gatewayUrl, loadWallet, onFunded]
-  );
-
-  // Stripe-hosted Checkout (setup) in a popup — no Stripe Elements here.
-  const addPaymentMethod = useCallback(async () => {
-    setBusy(true);
-    setActionError(null);
-    try {
-      const headers = await authHeaders();
-      const res = await fetch(`${gatewayUrl}/api/payments/stripe/checkout-setup`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({}),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body?.url) {
-        throw new Error(errorMessageFromBody(body, `Could not start checkout (${res.status})`));
-      }
-
-      const popup = window.open(body.url, 'hypery-add-card', 'width=480,height=720');
-
+      const expectedOrigin = (() => {
+        try {
+          return new URL(gatewayUrl).origin;
+        } catch {
+          return window.location.origin;
+        }
+      })();
       const added = await new Promise<boolean>((resolve) => {
         let settled = false;
         const finish = (ok: boolean) => {
@@ -170,40 +177,31 @@ export function RestrictionModal({
           clearInterval(poll);
           resolve(ok);
         };
-        // Only trust the completion message from the gateway's own origin.
-        const expectedOrigin = (() => {
-          try {
-            return new URL(gatewayUrl).origin;
-          } catch {
-            return typeof window !== 'undefined' ? window.location.origin : '';
-          }
-        })();
         const onMessage = (event: MessageEvent) => {
           if (event.origin !== expectedOrigin) return;
-          if (event?.data?.type === 'hypery:payment-method') {
-            finish(event.data.status === 'added');
-          }
+          if (event?.data?.type === 'hypery:payment-method') finish(event.data.status === 'added');
         };
         window.addEventListener('message', onMessage);
         const poll = setInterval(() => {
-          if (popup && popup.closed) finish(false);
+          if (popup.closed) finish(false);
         }, 700);
       });
-
-      await loadWallet();
-      if (added) onFunded?.();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not add payment method');
-    } finally {
+      const next = await loadWallet();
+      // Without wallet access we can't check, so once they come back from HyperY, let them carry on.
+      const ok = added || !next || next.paymentMethod?.exists || (next.balance?.current ?? 0) > 0;
       setBusy(false);
-    }
-  }, [authHeaders, gatewayUrl, loadWallet, onFunded]);
+      if (ok) {
+        setFunded(true);
+        onFunded?.();
+      }
+    },
+    [gatewayUrl, loadWallet, onFunded],
+  );
 
   if (!error) return null;
 
-  const openSettings = (path?: string) => {
-    if (!path) return;
-    window.open(`${gatewayUrl}${path}`, '_blank');
+  const openSettings = (url: string | null) => {
+    if (url) window.open(url, '_blank');
   };
 
   const isSpendingLimit = error.code === 'SPENDING_LIMIT_EXCEEDED';
@@ -304,7 +302,6 @@ export function RestrictionModal({
               </div>
             )}
 
-            {fetchError && <ErrorNote>{fetchError}</ErrorNote>}
             {actionError && <ErrorNote>{actionError}</ErrorNote>}
 
             {/* Actions */}
@@ -321,7 +318,7 @@ export function RestrictionModal({
                 </button>
               ) : isSpendingLimit ? (
                 <>
-                  <button onClick={() => openSettings(wallet?.settingsUrls.billing)} className={primary}>
+                  <button onClick={() => openSettings(hostedUrl('billing'))} className={primary}>
                     Manage spending limits
                   </button>
                   {onRetry && (
@@ -333,9 +330,9 @@ export function RestrictionModal({
               ) : isPayAsYouGo || !hasCard || isPaymentMethodRequired || isPaymentDeclined ? (
                 // Metered, or no card on file → capture/update a card first.
                 <>
-                  <button onClick={addPaymentMethod} disabled={busy} className={primary}>
+                  <button onClick={() => void openHosted(hostedUrl('addPaymentMethod'))} disabled={busy} className={primary}>
                     {busy && <Spinner />}
-                    {busy ? 'Opening secure checkout…' : hasCard ? 'Update payment method' : 'Add a payment method'}
+                    {busy ? 'Finish on HyperY…' : hasCard ? 'Update payment method' : 'Add a payment method'}
                   </button>
                   {isPayAsYouGo && (
                     <p className="hy:text-center hy:text-xs hy:text-subtle-foreground">
@@ -349,24 +346,11 @@ export function RestrictionModal({
                   )}
                 </>
               ) : (
-                // Prepaid + card on file → 1-click add funds.
-                <>
-                  <div className="hy:grid hy:grid-cols-3 hy:gap-2">
-                    {QUICK_AMOUNTS.map((usd) => (
-                      <button
-                        key={usd}
-                        onClick={() => addFunds(usd)}
-                        disabled={busy}
-                        className={cn(buttonVariants.primary, buttonSizes.xl, 'hy:tabular-nums')}
-                      >
-                        ${usd}
-                      </button>
-                    ))}
-                  </div>
-                  <button onClick={() => openSettings(wallet?.settingsUrls.topup)} className={quiet}>
-                    Other amount…
-                  </button>
-                </>
+                // Prepaid + card on file → buy credits on HyperY.
+                <button onClick={() => void openHosted(hostedUrl('topup'))} disabled={busy} className={primary}>
+                  {busy && <Spinner />}
+                  {busy ? 'Finish on HyperY…' : 'Add credits'}
+                </button>
               )}
 
               {!funded && (
