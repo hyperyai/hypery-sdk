@@ -170,6 +170,26 @@ const { clientId, gatewayUrl, getAccessToken } = useAuth();
 | `className` | `string` | `''` | Dialog classes. |
 | `overlayClassName` | `string` | `''` | Overlay classes. |
 
+### `billingPageUrl`
+
+The link `RestrictionModal` opens, as a function, for apps that render their own billing prompt:
+
+```ts
+import { billingPageUrl, type BillingPage } from '@hyperyai/sdk';
+
+const url = billingPageUrl('addPaymentMethod', restriction?.data ?? null, wallet, gatewayUrl);
+if (url) window.open(url, 'hypery-billing', 'width=480,height=760');
+```
+
+| Param | Type | Description |
+| --- | --- | --- |
+| `kind` | `BillingPage` | `'addPaymentMethod'`, `'topup'` or `'billing'`. |
+| `error` | `object \| null` | The restriction's data; its `url` (HyperY's hosted page for the paying team) wins for `addPaymentMethod` and `topup`. |
+| `wallet` | `WalletState \| null` | Its `settingsUrls` fill in, and win for `billing`. |
+| `gatewayUrl` | `string` | Makes relative pages absolute. |
+
+Returns the absolute URL, or `null` when there's nowhere to send them. The page is HyperY's own, signed in as the person, so it needs no billing scope.
+
 `RestrictionError`: `{ code, message, type?, limitType?, limit?, current?, requested?, resetsAt?, available?, required?, [key]: any }`.
 Note that `RestrictionError` is flat, unlike `ParsedError` (whose details sit in `data`).
 
