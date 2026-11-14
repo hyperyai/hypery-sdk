@@ -24,6 +24,11 @@ export interface HyperyModalsProps {
    * request that was blocked). The restriction is cleared automatically.
    */
   onRetry?: () => void;
+  /**
+   * The HyperY team paying, when the app lets people pick one: the funds modal shows (and links to) that team's
+   * billing. Omit for the person's own account.
+   */
+  activeOrganizationId?: string | null;
 }
 
 /**
@@ -42,6 +47,7 @@ export function HyperyModals({
   showSocial,
   showEmailPassword,
   onRetry,
+  activeOrganizationId,
 }: HyperyModalsProps = {}) {
   const {
     clientId,
@@ -71,6 +77,7 @@ export function HyperyModals({
         clientId={clientId}
         gatewayUrl={gatewayUrl}
         getAccessToken={getAccessToken}
+        activeOrganizationId={activeOrganizationId}
         onClose={clearRestriction}
         onRetry={onRetry}
       />

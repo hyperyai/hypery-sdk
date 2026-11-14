@@ -156,8 +156,8 @@ if (wallet?.mode === 'prepaid' && wallet.paymentMethod.exists) {
 | `isLoading` | `boolean` | |
 | `error` | `string \| null` | Load error. |
 | `reload` | `() => Promise<void>` | Refetch. |
-| `addFunds` | `(usd: number) => Promise<void>` | Charges the saved card (`POST /api/wallet/topup`), then reloads. Throws on failure. |
-| `addPaymentMethod` | `() => Promise<boolean>` | Opens Stripe-hosted card setup in a popup (`POST /api/payments/stripe/checkout-setup`). Resolves `true` when the popup reports `added`, `false` if it is closed; reloads either way. Throws if the setup session cannot be created. |
+| `addFunds` | `(usd: number) => Promise<void>` | Charges the saved card (`POST /api/wallet/topup`), then reloads. Needs `billing:write`, which only HyperY's own apps hold; other apps open `wallet.settingsUrls.topup`. Throws on failure. |
+| `addPaymentMethod` | `() => Promise<boolean>` | Opens HyperY's hosted add-card page (`wallet.settingsUrls.addPaymentMethod`) in a popup; no billing scope needed. Resolves `true` when the popup reports `added`, `false` if it is closed; reloads either way. Throws if the setup session cannot be created. |
 
 `WalletState`: `mode: BillingMode` (`'metered' | 'prepaid' | 'vag_passthrough'`),
 `balance { current, reserved, monthlySpent, monthlyLimit }`,

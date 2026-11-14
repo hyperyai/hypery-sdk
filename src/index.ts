@@ -93,7 +93,8 @@ export type { SubscribeButtonProps } from './components/SubscribeButton.js';
 
 // Error Components
 export { RestrictionModal } from './components/RestrictionModal.js';
-export type { RestrictionError } from './components/RestrictionModal.js';
+export type { RestrictionError, BillingPage } from './components/RestrictionModal.js';
+export { billingPageUrl } from './components/RestrictionModal.js';
 
 // Turnkey modal host — mount once for automatic billing/auth modals driven by
 // authenticatedFetch (issue #42).

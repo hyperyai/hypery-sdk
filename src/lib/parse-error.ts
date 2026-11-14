@@ -69,8 +69,9 @@ export function parseError(error: any): ParsedError {
   // No recognized code — classify from HTTP status so a payment/auth modal can
   // still open for an endpoint that returns a non-canonical body.
   if (status === 402) {
-    return statusFallback(INSUFFICIENT_CREDITS, 'Insufficient credits.', status, {
-      isInsufficientCredits: true,
+    // A bare 402 doesn't say which; asking for a card (which also unlocks buying credits) is the safe reading.
+    return statusFallback(PAYMENT_METHOD_REQUIRED, 'A payment method is required to continue.', status, {
+      isPaymentMethodRequired: true,
     });
   }
   if (status === 401) {

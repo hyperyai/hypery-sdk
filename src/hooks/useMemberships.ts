@@ -69,8 +69,9 @@ export function fetchMembershipsShared(gatewayUrl: string, token: string): Promi
   if (existing) return existing;
   const promise = (async () => {
     const res = await fetch(url, {
+      // Bearer only: cookies (credentials: 'include') make this a credentialed CORS request, which the gateway
+      // refuses from any other site, so the hook failed silently in every third-party app.
       headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
@@ -213,7 +214,6 @@ export async function setActiveWorkspace(
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
     body: JSON.stringify({
       activeOrganizationId: opts.teamId,
       activeWorkspaceId: opts.workspaceId,
