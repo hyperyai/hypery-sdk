@@ -107,6 +107,18 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | `GenericErrorData` | `{ code, message, type?, [key]: any }`. | [ERRORS.md](./ERRORS.md#error-codes) |
 | `UseErrorReturn` | Return of `useError`. | [HOOKS.md](./HOOKS.md#useerror) |
 
+## AI consent
+
+| Type | Description | Details |
+| --- | --- | --- |
+| `AiConsentAnswer` | `boolean \| null`: allowed, not allowed, not asked yet. | [AI_CONSENT.md](./AI_CONSENT.md) |
+| `AiConsentStorage` | `{ get(key), set(key, allowed) }`, sync or async: where the answer is kept. | [AI_CONSENT.md](./AI_CONSENT.md#keeping-the-answer) |
+| `AiConsentState` | `{ answer, open }` from `AiConsentController`. | [AI_CONSENT.md](./AI_CONSENT.md#building-blocks) |
+| `AiConsentText` | `{ dataSent?, recipients?, privacyPolicyUrl?, branding? }`: what the dialog says. | [AI_CONSENT.md](./AI_CONSENT.md) |
+| `AiConsentValue` | Return of `useAiConsent`. | [HOOKS.md](./HOOKS.md#useaiconsent) |
+| `AiConsentProviderProps` | Props of `AiConsentProvider`. | [COMPONENTS.md](./COMPONENTS.md#aiconsentprovider) |
+| `AiConsentDialogProps` | Props of `AiConsentDialog`. | [COMPONENTS.md](./COMPONENTS.md#aiconsentdialog) |
+
 ## Streaming
 
 | Type | Description | Details |

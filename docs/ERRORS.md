@@ -31,6 +31,24 @@ Contents: [Error codes](#error-codes) · [parseError](#parseerror) · [Guards](#
 | `PAYMENT_INCOMPLETE` | 402 | none (checkout: 3-D Secure needed) | `clientSecret`, `stripeAccount` |
 | `INTERVAL_NOT_OFFERED` | | none (subscriptions) | |
 
+## `AiConsentDeclined`
+
+Thrown by `authenticatedFetch` (with `config.aiConsent`) in place of a Hypery AI request the person didn't allow.
+Nothing was sent. Tell the person AI is off and where to turn it back on:
+
+```ts
+import { AiConsentDeclined } from '@hyperyai/sdk';
+
+try {
+  await authenticatedFetch(`${gatewayUrl}/api/v1/chat/completions`, { method: 'POST', body });
+} catch (e) {
+  if (e instanceof AiConsentDeclined) showNotice('AI is off. Turn it on in Settings.');
+  else throw e;
+}
+```
+
+See [AI_CONSENT.md](./AI_CONSENT.md).
+
 ## `parseError`
 
 `parseError(error: any): ParsedError`

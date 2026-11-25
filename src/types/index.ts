@@ -98,6 +98,25 @@ export interface HyperyAuthConfig {
    */
   onRestricted?: (error: ParsedError) => void;
   /**
+   * Ask before AI uses the person's content (App Review guidelines 5.1.1(i), 5.1.2(i)): the provider asks once when
+   * a signed-in person first opens the app, and every Hypery AI request through `authenticatedFetch` waits for a yes
+   * (it throws `AiConsentDeclined` after a no, having sent nothing). `useAiConsent()` gives the app the answer and
+   * `ensureAiConsent()`. See docs/AI_CONSENT.md.
+   */
+  aiConsent?: {
+    /** What this app sends, in the person's terms. */
+    dataSent?: string[];
+    /** Who receives it. Defaults to `AI_CONSENT_RECIPIENTS`. */
+    recipients?: string[];
+    /** The app's privacy policy, linked in the dialog. */
+    privacyPolicyUrl?: string;
+    branding?: { appName?: string; primaryColor?: string };
+    /** Ask as soon as a signed-in person opens the app (default true). Off: at the first AI request. */
+    askOnStart?: boolean;
+    /** Where the answer is kept. Default: localStorage, per app and person. */
+    storage?: import('../lib/ai-consent.js').AiConsentStorage;
+  };
+  /**
    * Where {@link AuthContextValue.logout} navigates once the token is revoked
    * and local state cleared. Defaults to `'/'` (the historical behaviour).
    * Pass `false` to stay put and route yourself — the revoke → clear →

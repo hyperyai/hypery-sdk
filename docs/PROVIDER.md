@@ -62,6 +62,7 @@ The callback/session effect depends on the `config` identity.
 | `onUnauthorized` | `() => void` | none | Called when an `authenticatedFetch` request is still `401` after one forced token refresh. `authRequired` is set on the context either way. |
 | `onRestricted` | `(error: ParsedError) => void` | none | Called when an `authenticatedFetch` response is `402` or `429` with a JSON body. `restriction` is set on the context either way. |
 | `postLogoutRedirect` | `PostLogoutRedirect` | `'/'` | Where `logout()` navigates once the session is revoked and cleared. See below. |
+| `aiConsent` | `{ dataSent?, recipients?, privacyPolicyUrl?, branding?, askOnStart?, storage? }` | none (off) | Ask before AI uses the person's content. The provider asks once when a signed-in person first opens the app, and every Hypery AI request made with `authenticatedFetch` waits for a yes. After a no it throws `AiConsentDeclined` without sending anything. `useAiConsent` gives the answer and `ensureAiConsent()`. See [AI_CONSENT.md](./AI_CONSENT.md). |
 
 ### `InteractionMode` and `ResolvedMode`
 
@@ -130,7 +131,7 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 | `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then navigates to `postLogoutRedirect` (`'/'` by default). |
 | `refreshAuth` | `() => Promise<void>` | Reloads the user from the gateway. |
 | `getAccessToken` | `(forceRefresh?: boolean) => Promise<string \| null>` | Valid access token, refreshing when expired or forced. Concurrent refreshes share one request. On refresh failure storage is cleared and it returns `null`. |
-| `authenticatedFetch` | `(input, init?) => Promise<Response>` | `fetch` with the bearer token. `401` triggers one forced refresh and retry, then sets `authRequired`; `402`/`429` sets `restriction`. Always returns the `Response`. |
+| `authenticatedFetch` | `(input, init?) => Promise<Response>` | `fetch` with the bearer token. `401` triggers one forced refresh and retry, then sets `authRequired`; `402`/`429` sets `restriction`. Always returns the `Response`. With `config.aiConsent`, a Hypery AI request (`isAiRequest`) first waits for the person's yes and throws `AiConsentDeclined` on a no ([AI_CONSENT.md](./AI_CONSENT.md)). |
 | `restriction` | `ParsedError \| null` | Last billing restriction from `authenticatedFetch`. |
 | `clearRestriction` | `() => void` | Clears `restriction`. |
 | `authRequired` | `boolean` | True when a `401` survived the refresh retry. |
@@ -152,7 +153,8 @@ For reference, the SDK writes these keys to the configured storage:
 `hypery_auth_tokens`, `hypery_auth_user`, and during login `hypery_oauth_verifier`
 and `hypery_oauth_state` (in `sessionStorage` for `memory` mode). It also uses
 `localStorage` for `hypery_force_reauth` (after logout) and
-`hypery_pending_checkout` (redirect-mode checkout resume). See
+`hypery_pending_checkout` (redirect-mode checkout resume). With `aiConsent`, the person's answer is kept in
+`localStorage` under `hypery_ai_consent:<clientId>:<userId>` (`aiConsentKey`) unless you pass your own `storage`. See
 [ADVANCED.md](./ADVANCED.md) for `TokenStorage`.
 
 ## Environment variables

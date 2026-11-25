@@ -352,6 +352,47 @@ It has no scope/permission prop.
 then `node scripts/screenshots.mjs <path-to-hypery-sdk>/docs/images`. It writes `<name>-light.png` and
 `<name>-dark.png` at 2x for every `[data-shot]` frame.</sub>
 
+## AiConsentProvider
+
+> Guide: [Asking before AI uses someone's content](./AI_CONSENT.md).
+
+Asks once, before the app's first AI request, whether the person's content may go to AI providers, says what is
+sent and who receives it, and keeps the answer. Mount it once in the signed-in app. `HyperyProvider` with
+`config.aiConsent` mounts it for you.
+
+```tsx
+import { AiConsentProvider } from '@hyperyai/sdk';
+
+<AiConsentProvider appId={clientId} userId={user.id} branding={{ appName: 'Acme' }}
+  dataSent={['What you ask Acme’s assistant', 'The notes it reads to answer']} privacyPolicyUrl="/privacy">
+  <App />
+</AiConsentProvider>
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `appId` | `string` | required | Your app (its Hypery clientId): the answer is kept per app and person. |
+| `userId` | `string \| null` | none | The signed-in person, so another account on the device is asked for itself. |
+| `storage` | `AiConsentStorage` | `localAiConsentStorage` | Where the answer is kept. |
+| `askOnStart` | `boolean` | `true` | Ask as soon as the app opens. Off: at the first `ensureAiConsent()`. |
+| `dataSent` | `string[]` | general text | What this app sends, in the person's terms. |
+| `recipients` | `string[]` | `AI_CONSENT_RECIPIENTS` | Who receives it. |
+| `privacyPolicyUrl` | `string` | none | Linked in the dialog. |
+| `branding` | `{ appName?, primaryColor? }` | none | App name in the text, brand colour on the Allow button. |
+
+Read and change the answer with [`useAiConsent`](./HOOKS.md#useaiconsent).
+
+## AiConsentDialog
+
+The dialog `AiConsentProvider` shows, for apps that open it themselves: **Allow AI to use your content?**, what is
+sent, who receives it, the privacy policy link, **Allow** / **Don't allow**. Closing it answers `false`.
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `isOpen` | `boolean` | Whether it is open. |
+| `onAnswer` | `(allowed: boolean) => Promise<void> \| void` | Called with the answer. The dialog shows the error if it throws. |
+| `dataSent` / `recipients` / `privacyPolicyUrl` / `branding` | see `AiConsentProvider` | What it says. |
+
 ## NativeSignInDialog
 
 > Setup and the native bridge: [Sign in with Apple in App Store builds](./APPLE.md).
