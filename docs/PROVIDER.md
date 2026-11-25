@@ -61,6 +61,7 @@ The callback/session effect depends on the `config` identity.
 | `interactionMode` | `InteractionMode` | `'auto'` | How interactive auth / card-entry steps are shown in the checkout flow. See below. |
 | `onUnauthorized` | `() => void` | none | Called when an `authenticatedFetch` request is still `401` after one forced token refresh. `authRequired` is set on the context either way. |
 | `onRestricted` | `(error: ParsedError) => void` | none | Called when an `authenticatedFetch` response is `402` or `429` with a JSON body. `restriction` is set on the context either way. |
+| `openAuthUrl` | `OpenAuthUrl` | none | Native hosts: opens the authorize URL outside the page and resolves with the callback URL. `requestScopes` uses it instead of a popup or redirect. See [Scopes](./SCOPES.md). |
 | `postLogoutRedirect` | `PostLogoutRedirect` | `'/'` | Where `logout()` navigates once the session is revoked and cleared. See below. |
 
 ### `InteractionMode` and `ResolvedMode`
@@ -130,6 +131,9 @@ Returned by [`useAuth()` / `useHyperyAuth()`](./HOOKS.md#useauth--usehyperyauth)
 | `logout` | `() => Promise<void>` | Revokes the access token (`POST /api/oauth/revoke`), clears storage, then navigates to `postLogoutRedirect` (`'/'` by default). |
 | `refreshAuth` | `() => Promise<void>` | Reloads the user from the gateway. |
 | `getAccessToken` | `(forceRefresh?: boolean) => Promise<string \| null>` | Valid access token, refreshing when expired or forced. Concurrent refreshes share one request. On refresh failure storage is cleared and it returns `null`. |
+| `grantedScopes` | `string[] \| null` | Scopes the current token carries, from the token response's `scope`. `null` when signed out or the gateway did not say. |
+| `requestScopes` | `(scopes, options?) => Promise<RequestScopesResult>` | Incremental consent for the union of granted and new scopes; the new token replaces the stored one. See [Scopes](./SCOPES.md). |
+| `withScope` | `(scope, fn) => Promise<T>` | Runs `fn`; on `insufficient_scope` calls `requestScopes` once and runs it again. |
 | `authenticatedFetch` | `(input, init?) => Promise<Response>` | `fetch` with the bearer token. `401` triggers one forced refresh and retry, then sets `authRequired`; `402`/`429` sets `restriction`. Always returns the `Response`. |
 | `restriction` | `ParsedError \| null` | Last billing restriction from `authenticatedFetch`. |
 | `clearRestriction` | `() => void` | Clears `restriction`. |

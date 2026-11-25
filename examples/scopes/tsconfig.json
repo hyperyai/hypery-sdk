@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "../..", "module": "ESNext", "target": "ES2022", "jsx": "react-jsx" },
+  "include": ["./*.tsx"]
+}
