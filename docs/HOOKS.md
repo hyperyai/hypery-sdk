@@ -7,7 +7,7 @@ All hooks must be called inside [`HyperyProvider`](./PROVIDER.md).
 Contents: [useAuth / useHyperyAuth](#useauth--usehyperyauth) · [useUser](#useuser) ·
 [useMemberships](#usememberships) · [useActiveWorkspace](#useactiveworkspace) ·
 [setActiveWorkspace](#setactiveworkspace) · [useWallet](#usewallet) ·
-[useBuyerWallet](#usebuyerwallet) · [useError](#useerror)
+[useBuyerWallet](#usebuyerwallet) · [useError](#useerror) · [useAiConsent](#useaiconsent)
 
 ---
 
@@ -225,3 +225,29 @@ if (!res.ok) setError({ ...(await res.json()), status: res.status });
 | `isBillingRestriction` | `boolean` | Any of the four billing flags. |
 
 The return type is exported as `UseErrorReturn`.
+
+## `useAiConsent`
+
+The person's answer to AI using their content, inside `HyperyProvider` with `config.aiConsent` or inside an
+`AiConsentProvider` ([AI_CONSENT.md](./AI_CONSENT.md)).
+
+```tsx
+import { useAiConsent } from '@hyperyai/sdk';
+
+const { answer, ensureAiConsent, setAnswer } = useAiConsent();
+
+// Before AI work: resolves true at once when allowed, otherwise asks and waits for the answer.
+if (await ensureAiConsent()) await summarize();
+
+// A settings switch.
+<input type="checkbox" checked={answer === true} onChange={(e) => setAnswer(e.target.checked)} />
+```
+
+| Returns | Type | Description |
+| --- | --- | --- |
+| `answer` | `AiConsentAnswer` | `true`, `false`, or `null` while not asked yet (or still loading). |
+| `ensureAiConsent` | `() => Promise<boolean>` | `true` at once when allowed; otherwise shows the dialog and resolves with the answer. Never sends anything itself. |
+| `setAnswer` | `(allowed: boolean) => Promise<void>` | Changes the answer outside the dialog (a settings switch). |
+
+Throws when used outside both providers.
+

@@ -168,6 +168,7 @@ screenshots in these docs are rendered this way.
 | [Errors](./docs/ERRORS.md) | Error codes, `parseError` and the `is*Error` guards, `formatTimeUntilReset`, `HyperyModals`, `RestrictionModal`, `SpendingLimitAlert`, `InsufficientCreditsAlert`, `ErrorBoundary` |
 | [Streaming](./docs/STREAMING.md) | `consumeSSEStream`, `parseSSEFrame`, `parseSSEError` |
 | [Sign in with Apple in App Store builds](./docs/APPLE.md) | Native Sign in with Apple (App Review guideline 4): setup (capability, entitlement, bundle ids on Hypery), the native bridge, `NativeSignInDialog`, `signInWithAppleNative`, `hideProviders`, two-factor, errors |
+| [Asking before AI uses someone's content](./docs/AI_CONSENT.md) | App Review guidelines 5.1.1(i) / 5.1.2(i): `HyperyProvider`'s `aiConsent` or `AiConsentProvider` asks once, says what is sent and who receives it, and makes AI requests wait for a yes; [examples](./examples/ai-consent/) |
 | [Advanced](./docs/ADVANCED.md) | `TokenStorage`, `getAuthorizationUrl`, `exchangeCodeForToken`, `signInWithAppleNative`, `refreshAccessToken`, `getUserInfo` |
 | [Agents](./docs/AGENTS.md) | `@hyperyai/sdk/agents`: the agent loop, agents the main agent can message / resume / stop, plan → build → review, sessions that survive reloads, the Hypery model call, stores (browser, Node, Dune) |
 | [Type reference](./docs/TYPES.md) | Every exported type, grouped |
@@ -176,6 +177,7 @@ screenshots in these docs are rendered this way.
 
 - **Auth**: OAuth 2.0 + PKCE, redirect or popup login, single-flight token refresh, configurable token storage.
 - **Sign in with Apple in App Store builds**: Apple's native sheet handed to Hypery, with a ready dialog and two-factor, so iOS / Mac App Store builds pass App Review ([guide](./docs/APPLE.md)).
+- **AI data consent**: asks once, in the app, before content goes to AI providers, and makes AI requests wait for a yes, so App Store builds pass guidelines 5.1.1(i) and 5.1.2(i) ([guide](./docs/AI_CONSENT.md)).
 - **Workspaces**: list teams/workspaces and switch the active one (`WorkspaceSwitcher`).
 - **AI credits**: mode-aware wallet (`useWallet`); adding a card or credits opens HyperY's hosted billing pages, so apps need no billing scope.
 - **Checkout**: log in, charge, add a card and retry in one call, as popups or redirects (`useCheckout`).

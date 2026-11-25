@@ -34,6 +34,8 @@ import {
 } from './oauth.js';
 import { resolvePostLogoutRedirect } from './logout-redirect.js';
 import { parseError } from './parse-error.js';
+import { AiConsentDeclined, isAiRequest } from './ai-consent.js';
+import { AiConsentProvider, useOptionalAiConsent } from '../components/AiConsent.js';
 import { openPopup, resolveInteractionMode } from './popup.js';
 import {
   AUTH_POPUP_NAME,
@@ -154,6 +156,8 @@ export function HyperyProvider({
    * `config.onRestricted`). The Response is always returned so the caller can
    * still read the body / handle other statuses itself.
    */
+  // Set by AiConsentBridge (below) once the consent provider is mounted.
+  const ensureAiConsentRef = useRef<(() => Promise<boolean>) | null>(null);
   const authenticatedFetch = useCallback(
     async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
       const withToken = (token: string | null): RequestInit => ({
@@ -163,6 +167,13 @@ export function HyperyProvider({
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
+
+      // An AI request waits for the person's permission (config.aiConsent): asked here if not yet, and never sent
+      // after a no.
+      if (config.aiConsent && isAiRequest(input)) {
+        const allowed = await (ensureAiConsentRef.current?.() ?? Promise.resolve(false));
+        if (!allowed) throw new AiConsentDeclined();
+      }
 
       let token = await getAccessToken();
       let res = await fetch(input, withToken(token));
@@ -518,7 +529,28 @@ export function HyperyProvider({
     clearAuthRequired: () => setAuthRequired(false),
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  if (!config.aiConsent) return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const { askOnStart = true, storage: consentStorage, ...consentText } = config.aiConsent;
+  return (
+    <AuthContext.Provider value={value}>
+      <AiConsentProvider
+        {...consentText}
+        userId={user?.id ?? null}
+        storage={consentStorage}
+        askOnStart={askOnStart && !!user}
+      >
+        <AiConsentBridge target={ensureAiConsentRef} />
+        {children}
+      </AiConsentProvider>
+    </AuthContext.Provider>
+  );
+}
+
+/** Hands the consent provider's ensureAiConsent to HyperyProvider's authenticatedFetch. */
+function AiConsentBridge({ target }: { target: React.MutableRefObject<(() => Promise<boolean>) | null> }) {
+  const consent = useOptionalAiConsent();
+  target.current = consent?.ensureAiConsent ?? null;
+  return null;
 }
 
 /**
