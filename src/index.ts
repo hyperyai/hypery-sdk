@@ -78,6 +78,18 @@ export type { AuthButtonProps } from './components/AuthButton.js';
 export { ModernAuthForm } from './components/ModernAuthForm.js';
 export type { ModernAuthFormProps } from './components/ModernAuthForm.js';
 export { NativeSignInDialog } from './components/NativeSignInDialog.js';
+export { AiConsent } from './components/AiConsent.js';
+export type { AiConsentProps } from './components/AiConsent.js';
+export { AiConsentDialog } from './components/AiConsentDialog.js';
+export type { AiConsentDialogProps } from './components/AiConsentDialog.js';
+export {
+  AI_CONSENT_REQUIRED,
+  AI_CONSENT_RECIPIENTS,
+  fetchAiConsent,
+  saveAiConsent,
+  isAiConsentRequired,
+} from './lib/ai-consent.js';
+export type { AiConsentState, AiConsentRequest } from './lib/ai-consent.js';
 export type { NativeSignInDialogProps } from './components/NativeSignInDialog.js';
 export { WorkspaceSwitcher } from './components/WorkspaceSwitcher.js';
 export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher.js';

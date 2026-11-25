@@ -352,6 +352,26 @@ It has no scope/permission prop.
 then `node scripts/screenshots.mjs <path-to-hypery-sdk>/docs/images`. It writes `<name>-light.png` and
 `<name>-dark.png` at 2x for every `[data-shot]` frame.</sub>
 
+## AiConsent
+
+Props: `AiConsentProps`. Asks once, in the app, before its first AI call: what is sent, who receives it, **Allow** / **Don't allow** (App Review
+guidelines 5.1.1(i), 5.1.2(i)). Mount once in the signed-in app; it never asks again once the person answered, and
+closing it counts as **Don't allow**. Guide: [Asking before AI uses someone's content](./AI_CONSENT.md).
+
+| Prop | Type | |
+| --- | --- | --- |
+| `load` | `() => Promise<AiConsentState>` | Reads the answer. Default: Hypery, with `HyperyProvider`'s token |
+| `save` | `(allowed: boolean) => Promise<unknown>` | Saves it. Default: Hypery, with `HyperyProvider`'s token |
+| `onAnswered` | `(allowed: boolean) => void` | After the person answered |
+| `dataSent` | `string[]` | What this app sends, in the person's terms |
+| `privacyPolicyUrl` | `string` | Linked in the dialog |
+| `branding` | `{ appName?, primaryColor? }` | |
+
+## AiConsentDialog
+
+Props: `AiConsentDialogProps`. The dialog `AiConsent` shows, for apps that open it themselves: `isOpen`, `onAnswer(allowed)` (closing answers
+`false`), and the same `dataSent`, `recipients`, `privacyPolicyUrl` and `branding`.
+
 ## NativeSignInDialog
 
 > Setup and the native bridge: [Sign in with Apple in App Store builds](./APPLE.md).
