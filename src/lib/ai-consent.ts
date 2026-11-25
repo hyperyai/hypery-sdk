@@ -3,8 +3,8 @@
  * on Hypery has to say what is sent and who receives it, and get the person's permission, in the app, before the
  * first one (App Review guidelines 5.1.1(i) and 5.1.2(i); a line in the Terms or Privacy Policy is not enough).
  *
- * This is the part without React: where the answer is kept, which requests need it, and the error a declined
- * request ends in. `AiConsentProvider` (components/AiConsent.tsx) asks; `HyperyProvider` waits for it before an AI
+ * This is the part without React: where the answer is kept (the person's Hypery account), which requests need it,
+ * and the error a declined request ends in. `AiConsentProvider` (components/AiConsent.tsx) asks; `HyperyProvider` waits for it before an AI
  * request when `config.aiConsent` is set.
  */
 
@@ -18,34 +18,84 @@ export const AI_CONSENT_RECIPIENTS = [
 /** The person's answer: true (allowed), false (not allowed) or null (not asked yet). */
 export type AiConsentAnswer = boolean | null;
 
-/** Where the answer is kept. Defaults to localStorage; pass your own to keep it on your server. */
+/**
+ * Where the answer is kept: with the person's Hypery account, so it follows them across devices and reinstalls.
+ * `hyperyAiConsentStorage` (the default inside HyperyProvider) talks to Hypery; `appRouteAiConsentStorage` talks to
+ * the app's own route when the app's server holds the token.
+ */
 export interface AiConsentStorage {
-  get(key: string): AiConsentAnswer | Promise<AiConsentAnswer>;
-  set(key: string, allowed: boolean): void | Promise<void>;
+  get(): Promise<AiConsentAnswer>;
+  set(allowed: boolean): Promise<void>;
 }
 
-/** localStorage, or nothing where there is none (server rendering): the person is then asked again next time. */
-export const localAiConsentStorage: AiConsentStorage = {
-  get(key) {
-    try {
-      const v = globalThis.localStorage?.getItem(key);
-      return v === 'true' ? true : v === 'false' ? false : null;
-    } catch {
-      return null;
-    }
-  },
-  set(key, allowed) {
-    try {
-      globalThis.localStorage?.setItem(key, String(allowed));
-    } catch {
-      /* storage unavailable: asked again next time */
-    }
-  },
-};
+/** A request to Hypery's `/api/user/ai-consent`, with the app's OAuth token for the person. */
+export interface AiConsentRequest {
+  /** Hypery's base URL, e.g. `https://hypery.ai`. */
+  gatewayUrl: string;
+  accessToken: string;
+  fetch?: typeof fetch;
+}
 
-/** The answer's key: one per app (clientId) and person, so another account on the device is asked for itself. */
-export function aiConsentKey(appId: string, userId?: string | null): string {
-  return `hypery_ai_consent:${appId}${userId ? `:${userId}` : ''}`;
+async function consentCall(req: AiConsentRequest, init: RequestInit): Promise<AiConsentAnswer> {
+  const url = `${req.gatewayUrl.replace(/\/$/, '')}/api/user/ai-consent`;
+  const res = await (req.fetch ?? fetch)(url, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${req.accessToken}` },
+  });
+  const body = (await res.json().catch(() => null)) as { allowed?: unknown; error?: { message?: string } } | null;
+  if (!res.ok) throw new Error(body?.error?.message || `AI consent request failed (${res.status})`);
+  return typeof body?.allowed === 'boolean' ? body.allowed : null;
+}
+
+/** Read the person's answer for this app from their Hypery account (browser or server). */
+export function fetchAiConsent(req: AiConsentRequest): Promise<AiConsentAnswer> {
+  return consentCall(req, { method: 'GET' });
+}
+
+/** Save the person's answer for this app on their Hypery account (browser or server). */
+export async function saveAiConsent(req: AiConsentRequest & { allowed: boolean }): Promise<void> {
+  await consentCall(req, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed: req.allowed }),
+  });
+}
+
+/** The answer on the person's Hypery account, with a token from `getAccessToken` (HyperyProvider's by default). */
+export function hyperyAiConsentStorage(opts: {
+  gatewayUrl: string;
+  getAccessToken: () => Promise<string | null>;
+  fetch?: typeof fetch;
+}): AiConsentStorage {
+  const request = async (): Promise<AiConsentRequest> => {
+    const accessToken = await opts.getAccessToken();
+    if (!accessToken) throw new Error('Sign in to keep your AI choice');
+    return { gatewayUrl: opts.gatewayUrl, accessToken, fetch: opts.fetch };
+  };
+  return {
+    get: async () => fetchAiConsent(await request()),
+    set: async (allowed) => saveAiConsent({ ...(await request()), allowed }),
+  };
+}
+
+/**
+ * The answer through the app's own route, for apps whose server holds the person's Hypery token (an httpOnly cookie).
+ * The route answers GET with `{ allowed }` and saves PUT `{ allowed }`, calling `fetchAiConsent` / `saveAiConsent`
+ * on the server with the person's token (see docs/AI_CONSENT.md).
+ */
+export function appRouteAiConsentStorage(path = '/api/ai-consent', opts: { fetch?: typeof fetch } = {}): AiConsentStorage {
+  const call = async (init: RequestInit) => {
+    const res = await (opts.fetch ?? fetch)(path, { credentials: 'same-origin', ...init });
+    const body = (await res.json().catch(() => null)) as { allowed?: unknown; error?: unknown } | null;
+    if (!res.ok) throw new Error(typeof body?.error === 'string' ? body.error : `AI consent request failed (${res.status})`);
+    return typeof body?.allowed === 'boolean' ? body.allowed : null;
+  };
+  return {
+    get: () => call({ method: 'GET' }),
+    set: async (allowed) => {
+      await call({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed }) });
+    },
+  };
 }
 
 /** Hypery's endpoints that send content to a model provider. */
@@ -95,7 +145,6 @@ export class AiConsentController {
 
   constructor(
     private readonly storage: AiConsentStorage,
-    private readonly key: string,
     private readonly askOnStart: boolean,
   ) {}
 
@@ -113,7 +162,7 @@ export class AiConsentController {
 
   /** Read the stored answer; with none, ask now when `askOnStart`. */
   async load(): Promise<void> {
-    const answer = await this.storage.get(this.key);
+    const answer = await this.storage.get();
     this.update({ answer, open: this.state.open || (answer === null && this.askOnStart) });
   }
 
@@ -128,7 +177,7 @@ export class AiConsentController {
 
   /** The person answered in the dialog (closing it is `false`). */
   async respond(allowed: boolean): Promise<void> {
-    await this.storage.set(this.key, allowed);
+    await this.storage.set(allowed);
     const waiting = this.waiting;
     this.waiting = [];
     this.update({ answer: allowed, open: false });
@@ -137,7 +186,7 @@ export class AiConsentController {
 
   /** Change the answer outside the dialog (a settings switch). */
   async set(allowed: boolean): Promise<void> {
-    await this.storage.set(this.key, allowed);
+    await this.storage.set(allowed);
     this.update({ answer: allowed });
   }
 }

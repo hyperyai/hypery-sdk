@@ -153,8 +153,8 @@ For reference, the SDK writes these keys to the configured storage:
 `hypery_auth_tokens`, `hypery_auth_user`, and during login `hypery_oauth_verifier`
 and `hypery_oauth_state` (in `sessionStorage` for `memory` mode). It also uses
 `localStorage` for `hypery_force_reauth` (after logout) and
-`hypery_pending_checkout` (redirect-mode checkout resume). With `aiConsent`, the person's answer is kept in
-`localStorage` under `hypery_ai_consent:<clientId>:<userId>` (`aiConsentKey`) unless you pass your own `storage`. See
+`hypery_pending_checkout` (redirect-mode checkout resume). The `aiConsent` answer is not kept on the device: it is
+saved on the person's Hypery account ([AI_CONSENT.md](./AI_CONSENT.md#keeping-the-answer)). See
 [ADVANCED.md](./ADVANCED.md) for `TokenStorage`.
 
 ## Environment variables

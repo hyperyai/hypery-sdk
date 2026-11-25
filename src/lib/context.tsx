@@ -474,7 +474,6 @@ export function HyperyProvider({
     <AuthContext.Provider value={value}>
       <AiConsentProvider
         {...consentText}
-        appId={config.clientId}
         userId={user?.id ?? null}
         storage={consentStorage}
         askOnStart={askOnStart && !!user}

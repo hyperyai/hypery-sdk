@@ -361,9 +361,9 @@ sent and who receives it, and keeps the answer. Mount it once in the signed-in a
 `config.aiConsent` mounts it for you.
 
 ```tsx
-import { AiConsentProvider } from '@hyperyai/sdk';
+import { AiConsentProvider, appRouteAiConsentStorage } from '@hyperyai/sdk';
 
-<AiConsentProvider appId={clientId} userId={user.id} branding={{ appName: 'Acme' }}
+<AiConsentProvider userId={user.id} storage={appRouteAiConsentStorage('/api/ai-consent')} branding={{ appName: 'Acme' }}
   dataSent={['What you ask Acme’s assistant', 'The notes it reads to answer']} privacyPolicyUrl="/privacy">
   <App />
 </AiConsentProvider>
@@ -371,9 +371,8 @@ import { AiConsentProvider } from '@hyperyai/sdk';
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `appId` | `string` | required | Your app (its Hypery clientId): the answer is kept per app and person. |
-| `userId` | `string \| null` | none | The signed-in person, so another account on the device is asked for itself. |
-| `storage` | `AiConsentStorage` | `localAiConsentStorage` | Where the answer is kept. |
+| `userId` | `string \| null` | none | The signed-in person: their answer is loaded again when the account changes. |
+| `storage` | `AiConsentStorage` | Hypery, inside `HyperyProvider` | Where the answer is kept, on the person's Hypery account: `hyperyAiConsentStorage` (the default inside `HyperyProvider`) or `appRouteAiConsentStorage` (your server holds the token). Required outside `HyperyProvider`. |
 | `askOnStart` | `boolean` | `true` | Ask as soon as the app opens. Off: at the first `ensureAiConsent()`. |
 | `dataSent` | `string[]` | general text | What this app sends, in the person's terms. |
 | `recipients` | `string[]` | `AI_CONSENT_RECIPIENTS` | Who receives it. |

@@ -19,11 +19,11 @@ import { cn } from '../lib/utils.js';
 import {
   AI_CONSENT_RECIPIENTS,
   AiConsentController,
-  aiConsentKey,
-  localAiConsentStorage,
+  hyperyAiConsentStorage,
   type AiConsentAnswer,
   type AiConsentStorage,
 } from '../lib/ai-consent.js';
+import { AuthContext } from '../lib/context.js';
 
 const DEFAULT_DATA_SENT = [
   'What you ask the app’s AI features, and their replies',
@@ -142,11 +142,13 @@ const AiConsentContext = createContext<AiConsentValue | null>(null);
 
 /** Props of {@link AiConsentProvider}. */
 export interface AiConsentProviderProps extends AiConsentText {
-  /** Your app (its Hypery clientId): the answer is kept per app and person. */
-  appId: string;
-  /** The signed-in person, so another account on the device is asked for itself. Omit while signed out. */
+  /** The signed-in person: their answer is loaded again when the account changes. */
   userId?: string | null;
-  /** Where the answer is kept. Default: localStorage. */
+  /**
+   * Where the answer is kept, with the person's Hypery account. Inside HyperyProvider the default reads and writes
+   * Hypery with its token (`hyperyAiConsentStorage`). Outside it, pass one: `appRouteAiConsentStorage()` when the
+   * app's server holds the token.
+   */
   storage?: AiConsentStorage;
   /** Ask once as soon as the person opens the app (default true). Off: asked at the first `ensureAiConsent()`. */
   askOnStart?: boolean;
@@ -156,7 +158,7 @@ export interface AiConsentProviderProps extends AiConsentText {
 /**
  * @example
  * ```tsx
- * <AiConsentProvider appId={clientId} userId={user?.id} branding={{ appName: 'Acme' }}
+ * <AiConsentProvider userId={user?.id} storage={appRouteAiConsentStorage()} branding={{ appName: 'Acme' }}
  *   dataSent={['What you ask Acme’s assistant', 'The notes it reads to answer']}
  *   privacyPolicyUrl="https://acme.app/privacy">
  *   <App />
@@ -168,15 +170,21 @@ export interface AiConsentProviderProps extends AiConsentText {
  * ```
  */
 export function AiConsentProvider({
-  appId,
   userId,
-  storage = localAiConsentStorage,
+  storage: given,
   askOnStart = true,
   children,
   ...text
 }: AiConsentProviderProps) {
-  const key = aiConsentKey(appId, userId);
-  const controller = useMemo(() => new AiConsentController(storage, key, askOnStart), [storage, key, askOnStart]);
+  const auth = useContext(AuthContext);
+  const gatewayUrl = auth?.gatewayUrl;
+  const getAccessToken = auth?.getAccessToken;
+  const storage = useMemo(() => {
+    if (given) return given;
+    if (gatewayUrl && getAccessToken) return hyperyAiConsentStorage({ gatewayUrl, getAccessToken });
+    throw new Error('AiConsentProvider needs `storage` outside HyperyProvider, e.g. appRouteAiConsentStorage()');
+  }, [given, gatewayUrl, getAccessToken]);
+  const controller = useMemo(() => new AiConsentController(storage, askOnStart), [storage, userId, askOnStart]);
   const { answer, open } = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
 
   useEffect(() => {

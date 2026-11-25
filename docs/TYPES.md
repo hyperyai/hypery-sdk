@@ -112,7 +112,8 @@ Every type exported from `@hyperyai/sdk`, grouped, one line each. Import with
 | Type | Description | Details |
 | --- | --- | --- |
 | `AiConsentAnswer` | `boolean \| null`: allowed, not allowed, not asked yet. | [AI_CONSENT.md](./AI_CONSENT.md) |
-| `AiConsentStorage` | `{ get(key), set(key, allowed) }`, sync or async: where the answer is kept. | [AI_CONSENT.md](./AI_CONSENT.md#keeping-the-answer) |
+| `AiConsentStorage` | `{ get(), set(allowed) }`: reaches the answer on the person's Hypery account. | [AI_CONSENT.md](./AI_CONSENT.md#keeping-the-answer) |
+| `AiConsentRequest` | `{ gatewayUrl, accessToken, fetch? }` for `fetchAiConsent` / `saveAiConsent`. | [AI_CONSENT.md](./AI_CONSENT.md#keeping-the-answer) |
 | `AiConsentState` | `{ answer, open }` from `AiConsentController`. | [AI_CONSENT.md](./AI_CONSENT.md#building-blocks) |
 | `AiConsentText` | `{ dataSent?, recipients?, privacyPolicyUrl?, branding? }`: what the dialog says. | [AI_CONSENT.md](./AI_CONSENT.md) |
 | `AiConsentValue` | Return of `useAiConsent`. | [HOOKS.md](./HOOKS.md#useaiconsent) |

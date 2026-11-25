@@ -113,7 +113,7 @@ export interface HyperyAuthConfig {
     branding?: { appName?: string; primaryColor?: string };
     /** Ask as soon as a signed-in person opens the app (default true). Off: at the first AI request. */
     askOnStart?: boolean;
-    /** Where the answer is kept. Default: localStorage, per app and person. */
+    /** Where the answer is kept. Default: the person's Hypery account, with this provider's token. */
     storage?: import('../lib/ai-consent.js').AiConsentStorage;
   };
   /**

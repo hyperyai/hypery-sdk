@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HyperyProvider, useHyperyAuth } from '../context.js';
-import { useAiConsent } from '../../components/AiConsent.js';
+import { AiConsentProvider, useAiConsent } from '../../components/AiConsent.js';
 import type { AuthContextValue, HyperyAuthConfig } from '../../types/index.js';
 
 // HyperyProvider with config.aiConsent: an AI request through authenticatedFetch is not sent until the person
@@ -69,5 +69,9 @@ describe('HyperyProvider aiConsent', () => {
     const { auth } = captured(base);
     await auth.authenticatedFetch('https://hypery.test/api/v1/chat/completions', { method: 'POST' });
     expect(calls).toEqual(['https://hypery.test/api/v1/chat/completions']);
+  });
+
+  it('never keeps the answer on the device: outside HyperyProvider it needs an account-backed storage', () => {
+    expect(() => renderToStaticMarkup(<AiConsentProvider><p>app</p></AiConsentProvider>)).toThrow(/needs `storage`/);
   });
 });

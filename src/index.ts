@@ -84,12 +84,14 @@ export {
   AI_CONSENT_RECIPIENTS,
   AiConsentController,
   AiConsentDeclined,
-  aiConsentKey,
+  appRouteAiConsentStorage,
   ensureAllowed,
+  fetchAiConsent,
+  hyperyAiConsentStorage,
   isAiRequest,
-  localAiConsentStorage,
+  saveAiConsent,
 } from './lib/ai-consent.js';
-export type { AiConsentAnswer, AiConsentState, AiConsentStorage } from './lib/ai-consent.js';
+export type { AiConsentAnswer, AiConsentRequest, AiConsentState, AiConsentStorage } from './lib/ai-consent.js';
 export type { NativeSignInDialogProps } from './components/NativeSignInDialog.js';
 export { WorkspaceSwitcher } from './components/WorkspaceSwitcher.js';
 export type { WorkspaceSwitcherProps } from './components/WorkspaceSwitcher.js';

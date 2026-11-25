@@ -2,40 +2,46 @@ import { describe, expect, it } from 'bun:test';
 import {
   AiConsentController,
   AiConsentDeclined,
-  aiConsentKey,
+  appRouteAiConsentStorage,
   ensureAllowed,
+  fetchAiConsent,
+  hyperyAiConsentStorage,
   isAiRequest,
-  localAiConsentStorage,
+  saveAiConsent,
   type AiConsentAnswer,
   type AiConsentStorage,
 } from '../ai-consent.js';
 
 // App Review 5.1.1(i) / 5.1.2(i): nothing goes to an AI provider until the person allowed it, they're asked once,
-// and an AI action waits for their answer instead of failing.
+// an AI action waits for their answer instead of failing, and the answer is kept with their Hypery account.
 
-function memoryStorage(initial: Record<string, boolean> = {}) {
-  const m = new Map<string, boolean>(Object.entries(initial));
-  const writes: [string, boolean][] = [];
+/** The account's answer, as Hypery keeps it. */
+function memoryStorage(initial: AiConsentAnswer = null) {
+  let answer = initial;
+  const writes: boolean[] = [];
   const storage: AiConsentStorage = {
-    get: (k) => (m.has(k) ? (m.get(k) as boolean) : null) as AiConsentAnswer,
-    set: (k, v) => {
-      m.set(k, v);
-      writes.push([k, v]);
+    get: async () => answer,
+    set: async (allowed) => {
+      answer = allowed;
+      writes.push(allowed);
     },
   };
   return { storage, writes };
 }
 
-const KEY = aiConsentKey('app_1', 'user_1');
-
-describe('aiConsentKey', () => {
-  it('is per app and per person', () => {
-    expect(aiConsentKey('app_1', 'user_1')).toBe('hypery_ai_consent:app_1:user_1');
-    expect(aiConsentKey('app_1', 'user_2')).not.toBe(aiConsentKey('app_1', 'user_1'));
-    expect(aiConsentKey('app_2', 'user_1')).not.toBe(aiConsentKey('app_1', 'user_1'));
-    expect(aiConsentKey('app_1')).toBe('hypery_ai_consent:app_1');
-  });
-});
+/** A stand-in for Hypery's /api/user/ai-consent (and an app route in front of it). */
+function fakeHypery(initial: AiConsentAnswer = null) {
+  let allowed = initial;
+  const seen: { url: string; method: string; auth?: string; body?: unknown }[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const url = String(input);
+    const headers = (init.headers ?? {}) as Record<string, string>;
+    seen.push({ url, method: init.method ?? 'GET', auth: headers.Authorization, body: init.body ? JSON.parse(String(init.body)) : undefined });
+    if (init.method === 'PUT') allowed = JSON.parse(String(init.body)).allowed;
+    return new Response(JSON.stringify({ allowed, updatedAt: null }), { status: 200 });
+  }) as typeof fetch;
+  return { fetchImpl, seen, answer: () => allowed };
+}
 
 describe('isAiRequest', () => {
   it('matches the Hypery endpoints that send content to a model', () => {
@@ -61,34 +67,34 @@ describe('isAiRequest', () => {
 });
 
 describe('AiConsentController', () => {
-  it('asks once on start when not asked yet, and keeps the answer', async () => {
+  it('asks once on start when not asked yet, and keeps the answer (next launch or another device: not asked)', async () => {
     const { storage, writes } = memoryStorage();
-    const c = new AiConsentController(storage, KEY, true);
+    const c = new AiConsentController(storage, true);
     await c.load();
     expect(c.getState()).toEqual({ answer: null, open: true });
     await c.respond(true);
     expect(c.getState()).toEqual({ answer: true, open: false });
-    expect(writes).toEqual([[KEY, true]]);
+    expect(writes).toEqual([true]);
 
     // Next launch: answered, so not asked again.
-    const again = new AiConsentController(storage, KEY, true);
+    const again = new AiConsentController(storage, true);
     await again.load();
     expect(again.getState()).toEqual({ answer: true, open: false });
   });
 
   it('closing the dialog is "Don\'t allow", and the person is not asked again on start', async () => {
     const { storage } = memoryStorage();
-    const c = new AiConsentController(storage, KEY, true);
+    const c = new AiConsentController(storage, true);
     await c.load();
     await c.respond(false);
-    const again = new AiConsentController(storage, KEY, true);
+    const again = new AiConsentController(storage, true);
     await again.load();
     expect(again.getState()).toEqual({ answer: false, open: false });
   });
 
   it('ensure() resolves at once when allowed, without opening the dialog', async () => {
-    const { storage } = memoryStorage({ [KEY]: true });
-    const c = new AiConsentController(storage, KEY, true);
+    const { storage } = memoryStorage(true);
+    const c = new AiConsentController(storage, true);
     await c.load();
     expect(await c.ensure()).toBe(true);
     expect(c.getState().open).toBe(false);
@@ -96,7 +102,7 @@ describe('AiConsentController', () => {
 
   it('ensure() waits for the answer instead of failing: every waiting call gets it', async () => {
     const { storage } = memoryStorage();
-    const c = new AiConsentController(storage, KEY, false);
+    const c = new AiConsentController(storage, false);
     await c.load();
     expect(c.getState().open).toBe(false); // askOnStart off: not asked yet
     const first = c.ensure();
@@ -108,8 +114,8 @@ describe('AiConsentController', () => {
   });
 
   it('after a no, an AI action asks again (the person tried AI) and resolves false if they still say no', async () => {
-    const { storage } = memoryStorage({ [KEY]: false });
-    const c = new AiConsentController(storage, KEY, true);
+    const { storage } = memoryStorage(false);
+    const c = new AiConsentController(storage, true);
     await c.load();
     expect(c.getState().open).toBe(false);
     const attempt = c.ensure();
@@ -120,7 +126,7 @@ describe('AiConsentController', () => {
 
   it('notifies subscribers on every change (React re-renders from it)', async () => {
     const { storage } = memoryStorage();
-    const c = new AiConsentController(storage, KEY, true);
+    const c = new AiConsentController(storage, true);
     let calls = 0;
     const unsubscribe = c.subscribe(() => calls++);
     await c.load();
@@ -140,24 +146,60 @@ describe('ensureAllowed', () => {
   });
 });
 
-describe('localAiConsentStorage', () => {
-  it('round-trips through localStorage, and answers null without one', () => {
-    const original = globalThis.localStorage;
-    const m = new Map<string, string>();
-    (globalThis as { localStorage?: unknown }).localStorage = {
-      getItem: (k: string) => m.get(k) ?? null,
-      setItem: (k: string, v: string) => void m.set(k, v),
-    };
-    try {
-      expect(localAiConsentStorage.get(KEY)).toBeNull();
-      localAiConsentStorage.set(KEY, false);
-      expect(localAiConsentStorage.get(KEY)).toBe(false);
-      localAiConsentStorage.set(KEY, true);
-      expect(localAiConsentStorage.get(KEY)).toBe(true);
-      (globalThis as { localStorage?: unknown }).localStorage = undefined;
-      expect(localAiConsentStorage.get(KEY)).toBeNull();
-    } finally {
-      (globalThis as { localStorage?: unknown }).localStorage = original;
-    }
+describe('kept with the Hypery account', () => {
+  it('fetchAiConsent / saveAiConsent call /api/user/ai-consent with the app token', async () => {
+    const hypery = fakeHypery();
+    const req = { gatewayUrl: 'https://hypery.test/', accessToken: 'tok', fetch: hypery.fetchImpl };
+    expect(await fetchAiConsent(req)).toBeNull();
+    await saveAiConsent({ ...req, allowed: true });
+    expect(await fetchAiConsent(req)).toBe(true);
+    expect(hypery.seen.map((r) => [r.method, r.url, r.auth])).toEqual([
+      ['GET', 'https://hypery.test/api/user/ai-consent', 'Bearer tok'],
+      ['PUT', 'https://hypery.test/api/user/ai-consent', 'Bearer tok'],
+      ['GET', 'https://hypery.test/api/user/ai-consent', 'Bearer tok'],
+    ]);
+    expect(hypery.seen[1].body).toEqual({ allowed: true });
+  });
+
+  it('throws Hypery\'s message when it refuses', async () => {
+    const refusing = (async () =>
+      new Response(JSON.stringify({ error: { code: 'APP_REQUIRED', message: "Call this with the app's OAuth token" } }), { status: 403 })) as unknown as typeof fetch;
+    await expect(fetchAiConsent({ gatewayUrl: 'https://hypery.test', accessToken: 't', fetch: refusing })).rejects.toThrow(/OAuth token/);
+  });
+
+  it('hyperyAiConsentStorage asks with a fresh token each time, and refuses without one', async () => {
+    const hypery = fakeHypery(false);
+    let n = 0;
+    const storage = hyperyAiConsentStorage({ gatewayUrl: 'https://hypery.test', getAccessToken: async () => `tok${++n}`, fetch: hypery.fetchImpl });
+    expect(await storage.get()).toBe(false);
+    await storage.set(true);
+    expect(hypery.answer()).toBe(true);
+    expect(hypery.seen.map((r) => r.auth)).toEqual(['Bearer tok1', 'Bearer tok2']);
+    const signedOut = hyperyAiConsentStorage({ gatewayUrl: 'https://hypery.test', getAccessToken: async () => null, fetch: hypery.fetchImpl });
+    await expect(signedOut.get()).rejects.toThrow(/Sign in/);
+  });
+
+  it('appRouteAiConsentStorage goes through the app\'s own route (its server holds the token)', async () => {
+    const route = fakeHypery();
+    const storage = appRouteAiConsentStorage('/api/ai-consent', { fetch: route.fetchImpl });
+    expect(await storage.get()).toBeNull();
+    await storage.set(false);
+    expect(await storage.get()).toBe(false);
+    expect(route.seen.map((r) => [r.method, r.url, r.auth])).toEqual([
+      ['GET', '/api/ai-consent', undefined],
+      ['PUT', '/api/ai-consent', undefined],
+      ['GET', '/api/ai-consent', undefined],
+    ]);
+  });
+
+  it('the controller on the account: answered on one device, not asked on the next', async () => {
+    const hypery = fakeHypery();
+    const deviceA = new AiConsentController(hyperyAiConsentStorage({ gatewayUrl: 'https://hypery.test', getAccessToken: async () => 'a', fetch: hypery.fetchImpl }), true);
+    await deviceA.load();
+    expect(deviceA.getState().open).toBe(true);
+    await deviceA.respond(true);
+    const deviceB = new AiConsentController(hyperyAiConsentStorage({ gatewayUrl: 'https://hypery.test', getAccessToken: async () => 'b', fetch: hypery.fetchImpl }), true);
+    await deviceB.load();
+    expect(deviceB.getState()).toEqual({ answer: true, open: false });
   });
 });
