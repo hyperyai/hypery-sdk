@@ -5,6 +5,11 @@
 
 import type { AuthTokens } from '../types/index.js';
 
+/** `{ scopes }` from a token response's space-separated `scope`, or nothing when absent. */
+function grantedScopes(scope: unknown): { scopes?: string[] } {
+  return typeof scope === 'string' ? { scopes: scope.split(/\s+/).filter(Boolean) } : {};
+}
+
 /**
  * Generate random string for PKCE verifier
  */
@@ -226,6 +231,7 @@ export async function exchangeCodeForToken(
     refreshToken: data.refresh_token,
     expiresIn: data.expires_in,
     tokenType: data.token_type,
+    ...grantedScopes(data.scope),
   };
 }
 
@@ -265,6 +271,7 @@ export async function refreshAccessToken(
     refreshToken: data.refresh_token,
     expiresIn: data.expires_in,
     tokenType: data.token_type,
+    ...grantedScopes(data.scope),
   };
 }
 
